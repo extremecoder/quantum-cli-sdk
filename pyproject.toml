@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quantum-cli-sdk"
+version = "0.1.1"
+description = "A CLI and SDK for quantum development"
+authors = [
+    { name = "Abhishek Tamrakar", email = "trainings.abhishek@gmail.com" }
+]
+license = "MIT"
+readme = "README.md"
+keywords = ["quantum", "cli", "sdk", "development"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.6"
+dependencies = [
+    "numpy>=1.18.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/extremecoder/quantum-cli-sdk"
+Documentation = "https://github.com/extremecoder/quantum-cli-sdk/wiki"
+Source = "https://github.com/extremecoder/quantum-cli-sdk"
+Tracker = "https://github.com/extremecoder/quantum-cli-sdk/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+quantum-cli = "quantum_sdk.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "flake8",
+    "black",
+    "mypy",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["quantum_sdk"]
+
+[tool.coverage.report]
+show_missing = true

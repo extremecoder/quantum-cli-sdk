@@ -1,0 +1,2 @@
+[console_scripts]
+quantum-cli = quantum_sdk.cli:main
