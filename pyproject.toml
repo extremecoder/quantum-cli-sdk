@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quantum-cli-sdk"
-version = "0.1.1"
+version = "0.3.0"
 description = "A CLI and SDK for quantum development"
 authors = [
     { name = "Abhishek Tamrakar", email = "trainings.abhishek@gmail.com" }
@@ -16,16 +16,75 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.6",
-    "Programming Language :: Python :: 3.7",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Operating System :: OS Independent",
 ]
-requires-python = ">=3.6"
+requires-python = ">=3.10"
 dependencies = [
-    "numpy>=1.18.0",
+    # Core scientific libraries
+    "networkx>=2.8.0",
+    "numpy>=1.22.0",
+    "matplotlib>=3.5.0",
+    "scipy>=1.8.0",
+    "pyyaml>=6.0.0",  # For configuration file handling
+    "cryptography>=40.0.0",  # For secure credential handling
+    "click>=8.1.0",  # Command line interface
+    
+    # IBM Quantum (complete stack)
+    "qiskit==1.4.1",
+    "qiskit-aer==0.16.4",
+    "qiskit-ibm-runtime==0.36.1",
+    "qiskit-ibm-provider==0.11.0",  # For IBM hardware access
+    "qiskit-qasm3-import==0.5.1",  # OpenQASM 3.0 import support for Qiskit
+    "qiskit-braket-provider>=0.1.0",  # For Braket to OpenQASM conversion
+    
+    # AWS Braket
+    "amazon-braket-sdk==1.90.1",  # For AWS hardware access
+    "amazon-braket-schemas==1.23.1",
+    "amazon-braket-default-simulator==1.26.4",
+    "boto3>=1.24.0",  # AWS SDK
+    
+    # Google Quantum (complete stack)
+    "cirq==1.4.1",
+    "cirq-core==1.4.1",
+    "cirq-google==1.4.1",  # For Google hardware access
+    "cirq-aqt==1.4.1",
+    "cirq-ionq==1.4.1",
+    "cirq-pasqal==1.4.1",
+    "cirq-rigetti==1.4.1",
+    "cirq-web==1.4.1",
+    "protobuf>=3.20.0,<4.0.0",  # Required by Cirq for compatibility
+    "ply>=3.11",  # Required for Cirq's QASM parsing
+    
+    # OpenQASM support
+    "openqasm3>=0.4.0",  # General OpenQASM 3.0 parsing
+    
+    # Cross-platform tools
+    "pyquil>=3.0.0",  # For Rigetti compatibility
+    "qutip>=4.7.0",  # Quantum toolbox in Python
+    
+    # Architecture components
+    "pyyaml>=6.0.0",  # For configuration profiles
+    "importlib_metadata>=6.0.0",  # For plugin discovery
+    
+    # Developer Experience
+    "rich>=13.3.1",  # For enhanced terminal output
+    "prompt_toolkit>=3.0.36",  # For better interactive prompts
+    "plotly>=5.12.0",  # For interactive visualizations
+    "ipython>=8.10.0",  # For improved REPL experience
+    "jupyter>=1.0.0",  # For notebook support
+    
+    # Development tools
+    "jupyter>=1.0.0",  # For interactive development
+    "tqdm>=4.65.0",  # Progress bars for long-running operations
+    
+    # Authentication and security
+    "requests>=2.28.0",  # For API interactions
+    "python-dotenv>=1.0.0",  # For loading environment variables
+    
+    # Visualization and reporting
+    "seaborn>=0.12.0",  # For enhanced plotting
+    "pandas>=1.5.0",  # For data handling and analysis
 ]
 
 [project.urls]
@@ -38,19 +97,20 @@ Tracker = "https://github.com/extremecoder/quantum-cli-sdk/issues"
 where = ["src"]
 
 [project.scripts]
-quantum-cli = "quantum_sdk.cli:main"
+quantum-cli = "quantum_cli_sdk.cli:main"
 
 [project.optional-dependencies]
 dev = [
-    "pytest",
+    "pytest>=7.0.0",  # For testing
     "flake8",
-    "black",
+    "black>=23.0.0",  # For code formatting
     "mypy",
+    "pylint>=2.17.0",  # For code quality checks
 ]
 
 [tool.coverage.run]
 branch = true
-source = ["quantum_sdk"]
+source = ["quantum_cli_sdk"]
 
 [tool.coverage.report]
 show_missing = true

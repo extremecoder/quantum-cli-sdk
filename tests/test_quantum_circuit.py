@@ -4,7 +4,7 @@ Tests for the QuantumCircuit class.
 
 import pytest
 import numpy as np
-from quantum_sdk import QuantumCircuit, run_simulation
+from quantum_cli_sdk import QuantumCircuit, run_simulation
 
 def test_circuit_creation():
     """Test quantum circuit creation."""

@@ -1,0 +1,61 @@
+# Quantum CLI SDK - Example Configuration File
+
+# Active profile
+profile: dev
+
+# Profiles for different environments
+profiles:
+  # Development profile
+  dev:
+    simulator: qiskit
+    shots: 1024
+    log_level: DEBUG
+    caching: true
+    cache_dir: .quantum_cache
+    validate_circuits: true
+    optimization_level: 1
+    optimization_pipeline: default
+  
+  # Testing profile
+  test:
+    simulator: cirq
+    shots: 4096
+    log_level: INFO
+    caching: true
+    cache_dir: .quantum_cache
+    validate_circuits: true
+    optimization_level: 2
+    optimization_pipeline: default
+  
+  # Production profile
+  prod:
+    simulator: qiskit
+    shots: 8192
+    log_level: WARNING
+    caching: false
+    validate_circuits: true
+    optimization_level: 3
+    optimization_pipeline: optimized
+
+# Provider configurations
+quantum_providers:
+  ibm:
+    # Replace with your actual token
+    token: null
+    hub: ibm-q
+    group: open
+    project: main
+  
+  aws:
+    region: us-east-1
+    # Replace with your S3 bucket name
+    s3_bucket: null
+  
+  google:
+    # Replace with your Google Cloud project ID
+    project_id: null
+
+# Paths to plugin directories
+plugin_paths:
+  - plugins
+  - ~/.quantum-cli/plugins 
