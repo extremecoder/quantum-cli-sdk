@@ -14,7 +14,7 @@ import datetime
 from . import __version__
 from .quantum_circuit import QuantumCircuit
 from .simulator import run_simulation
-from .commands import circuit, run
+from .commands import run
 from .commands import generate_ir, simulate, hw_run, estimate_resources, template, mitigate, calculate_cost, init
 from .config import get_config, initialize_config
 from .cache import get_cache, initialize_cache
@@ -401,15 +401,6 @@ def main():
     # Add subparsers for commands
     subparsers = parser.add_subparsers(dest="command", help="Command")
     
-    # Circuit manipulation commands
-    circuit_parser = subparsers.add_parser("circuit", help="Manipulate quantum circuits")
-    circuit_subparsers = circuit_parser.add_subparsers(dest="circuit_cmd", help="Circuit command")
-    
-    # Create circuit
-    create_parser = circuit_subparsers.add_parser("create", help="Create a new quantum circuit")
-    create_parser.add_argument("--qubits", type=int, required=True, help="Number of qubits")
-    create_parser.add_argument("--output", "-o", help="Output file path")
-    
     # Run simulation
     run_parser = subparsers.add_parser("run", help="Run a quantum circuit")
     run_parser.add_argument("--circuit", "-c", required=True, help="Path to circuit file")
@@ -543,13 +534,7 @@ def main():
             return 1
     
     # Handle commands
-    if args.command == "circuit":
-        if args.circuit_cmd == "create":
-            circuit.create_circuit(args.qubits, args.output)
-        else:
-            circuit_parser.print_help()
-    
-    elif args.command == "run":
+    if args.command == "run":
         run.run_circuit(args.circuit, args.shots, args.output)
     
     elif args.command == "generate-ir":
