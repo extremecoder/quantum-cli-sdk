@@ -7,7 +7,8 @@
 2. [x] 2024-08-02: Implement `init` command for project scaffolding  
 The scaffolding should follow structure as shown in below pic
 ![Project Structure](./images/quantum-app-folder-structure.png)
-3. [] 2023-10-22: Create GitHub Actions workflow templates
+3. [] 2023-10-22: Create GitHub Actions workflow templates  
+This template will basically be made available in the init generated scaffolding
 4. [ ] 2023-10-25: Implement `generate-ir` command for OpenQASM conversion
 5. [ ] 2023-10-30: Implement `validate` command for IR verification
 6. [ ] 2023-11-05: Implement `security-scan` for vulnerability checking
