@@ -1,0 +1,5 @@
+# Add project dependencies here
+# Example:
+# qiskit>=1.0.0
+# cirq>=1.0.0
+# amazon-braket-sdk>=1.60.0

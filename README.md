@@ -39,11 +39,9 @@ pip install quantum-cli-sdk
 ### Initialize a new quantum project
 
 ```bash
-# List available project templates
-quantum-cli init list
-
-# Create a new quantum project based on a template
-quantum-cli init create basic --dir my_quantum_project
+# Create a new quantum project in the directory 'my_quantum_project'
+# If no directory name is provided, it initializes in the current directory.
+quantum-cli init create my_quantum_project
 ```
 
 ### Create and run a quantum circuit
@@ -68,17 +66,10 @@ quantum-cli interactive
 ### Project Initialization
 
 ```bash
-# List available project templates
-quantum-cli init list
-
-# Create a new quantum project
-quantum-cli init create <template> [--dir PROJECT_DIR] [--overwrite]
+# Create a new quantum project using the default template
+# Initializes in the current directory if <directory_name> is omitted.
+quantum-cli init create [<directory_name>] [--overwrite]
 ```
-
-Templates include:
-- `basic`: A simple quantum computing project with basic circuit creation and simulation
-- `advanced`: A comprehensive quantum computing project with error mitigation, visualization, and hardware execution
-- `algorithm`: A project focused on implementing and optimizing quantum algorithms
 
 ### Circuit Commands
 

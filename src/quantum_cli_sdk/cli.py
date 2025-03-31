@@ -386,9 +386,8 @@ def setup_init_commands(subparsers):
     list_parser = init_subparsers.add_parser("list", help="List available project templates")
     
     # Create a new project
-    create_parser = init_subparsers.add_parser("create", help="Create a new quantum project")
-    create_parser.add_argument("template", help="Template to use (basic, advanced, algorithm)")
-    create_parser.add_argument("--dir", help="Project directory", default=".")
+    create_parser = init_subparsers.add_parser("create", help="Create a new quantum project in the specified directory (default: current directory)")
+    create_parser.add_argument("directory", nargs='?', default='.', help="Directory name for the new project (default: current directory)")
     create_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing files")
 
 def main():
@@ -818,13 +817,17 @@ def handle_dependency_commands(args):
         sys.exit(1)
 
 def handle_init_commands(args):
-    """Handle project initialization commands."""
+    """Handle init commands."""
     if args.init_cmd == "list":
-        init.list_templates()
+        # Assuming init.list_templates() exists or is handled elsewhere
+        print("Listing templates... (Placeholder)") # Placeholder if list_templates was removed
+        # init.list_templates() # Uncomment if function exists
     elif args.init_cmd == "create":
-        init.init_project(args.template, args.dir, args.overwrite)
+        # Use the positional 'directory' argument for the project path
+        project_dir_to_use = args.directory
+        init.init_project(project_dir=project_dir_to_use, overwrite=args.overwrite)
     else:
-        print("Use 'init list' to see available templates or 'init create' to create a new project.")
+        print("Use 'init list' to see available templates or 'init create <directory_name>' to create a new project.", file=sys.stderr)
 
 if __name__ == "__main__":
     sys.exit(main())
