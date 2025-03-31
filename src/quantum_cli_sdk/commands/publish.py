@@ -17,8 +17,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from ..config import get_config
-from ..logging_config import setup_logger
 from ..output_formatter import format_output
+from ..utils import find_files, run_command
 
 # Set up logger
 logger = logging.getLogger(__name__)

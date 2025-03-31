@@ -13,8 +13,9 @@ import requests
 from string import Template
 
 from ..config import get_config
-from ..logging_config import setup_logger
+from ..quantum_circuit import QuantumCircuit
 from ..output_formatter import format_output
+from ..test_framework import generate_tests_for_circuit
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -166,7 +167,7 @@ import numpy as np
 from qiskit import QuantumCircuit, Aer, execute
 
 def test_shor_algorithm_factors_correctly():
-    """Test that Shor's algorithm correctly factors the target number."""
+    """Test that Shor\'s algorithm correctly factors the target number."""
     # This is a simplified test for demonstration
     # Load the circuit
     with open("${circuit_path}", "r") as f:

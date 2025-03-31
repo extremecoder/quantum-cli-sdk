@@ -12,8 +12,9 @@ import tempfile
 import shutil
 
 from ..config import get_config
-from ..logging_config import setup_logger
+from ..quantum_circuit import QuantumCircuit
 from ..output_formatter import format_output
+from ..test_framework import run_tests
 
 # Set up logger
 logger = logging.getLogger(__name__)

@@ -16,8 +16,9 @@ from pathlib import Path
 from datetime import datetime
 
 from ..config import get_config
-from ..logging_config import setup_logger
+from ..utils import find_files, create_archive
 from ..output_formatter import format_output
+from ..dependency_analyzer import analyze_dependencies
 
 # Set up logger
 logger = logging.getLogger(__name__)

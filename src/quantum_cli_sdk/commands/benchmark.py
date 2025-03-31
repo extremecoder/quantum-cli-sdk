@@ -17,8 +17,9 @@ import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 
 from ..config import get_config
-from ..logging_config import setup_logger
+from ..quantum_circuit import QuantumCircuit
 from ..output_formatter import format_output
+from ..benchmark_runner import BenchmarkRunner
 
 # Set up logger
 logger = logging.getLogger(__name__)

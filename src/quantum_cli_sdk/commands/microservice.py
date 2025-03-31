@@ -14,8 +14,9 @@ import subprocess
 from string import Template
 
 from ..config import get_config
-from ..logging_config import setup_logger
+from ..microservice_generator import MicroserviceGenerator
 from ..output_formatter import format_output
+from ..utils import load_config, run_docker_command
 
 # Set up logger
 logger = logging.getLogger(__name__)

@@ -12,8 +12,9 @@ import numpy as np
 from pathlib import Path
 
 from ..config import get_config
-from ..logging_config import setup_logger
+from ..trial_manager import TrialManager
 from ..output_formatter import format_output
+from ..utils import load_config, validate_config
 
 # Set up logger
 logger = logging.getLogger(__name__)

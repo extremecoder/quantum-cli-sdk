@@ -14,8 +14,9 @@ from pathlib import Path
 from http import HTTPStatus
 
 from ..config import get_config
-from ..logging_config import setup_logger
+from ..microservice_generator import MicroserviceGenerator
 from ..output_formatter import format_output
+from ..test_framework import generate_microservice_tests
 
 # Set up logger
 logger = logging.getLogger(__name__)

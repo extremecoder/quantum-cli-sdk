@@ -10,7 +10,6 @@ from pathlib import Path
 import re
 
 from ..config import get_config
-from ..logging_config import setup_logger
 from ..output_formatter import format_output
 
 # Set up logger

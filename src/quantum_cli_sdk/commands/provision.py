@@ -14,8 +14,9 @@ import time
 from pathlib import Path
 
 from ..config import get_config
-from ..logging_config import setup_logger
+from ..utils import load_config
 from ..output_formatter import format_output
+from ..resource_management import provision_resource, deprovision_resource
 
 # Set up logger
 logger = logging.getLogger(__name__)
