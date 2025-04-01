@@ -4,41 +4,41 @@
 
 ### Phase 1: Core Command Implementation
 1. [x] 2023-10-15: Set up project structure and CLI framework
-2. [x] 2024-08-02: Implement `init` command for project scaffolding  
-The scaffolding should follow structure as shown in below pic
-![Project Structure](./images/quantum-app-folder-structure.png)
-3. [] 2023-10-22: Create GitHub Actions workflow templates  
-This template will basically be made available in the init generated scaffolding
-4. [ ] 2023-10-25: Implement `generate-ir` command for OpenQASM conversion
-5. [ ] 2023-10-30: Implement `validate` command for IR verification
-6. [ ] 2023-11-05: Implement `security-scan` for vulnerability checking
-7. [ ] 2023-11-10: Implement `simulate` command with Qiskit backend
-8. [ ] 2023-11-15: Add Cirq backend support to `simulate` command
-9. [ ] 2023-11-20: Add Braket backend support to `simulate` command
+2. [x] 2024-08-02: Implement `init` command for project scaffolding
+   The scaffolding should follow structure as shown in below pic
+   ![Project Structure](./images/quantum-app-folder-structure.png)
+3. [x] 2025-04-01: Create GitHub Actions workflow templates
+   This template will basically be made available in the init generated scaffolding
+4. [x] 2025-04-01: Implement `ir generate` command for OpenQASM conversion (Aligned with pipeline, LLM added)
+5. [x] 2025-04-01: Implement `ir validate` command for IR verification (Aligned with pipeline)
+6. [x] 2025-04-01: Implement `security scan` for vulnerability checking (Aligned with pipeline)
+7. [x] 2025-04-01: Implement `run simulate` command with Qiskit backend (Aligned with pipeline, renamed --platform to --backend, added tests/docs)
+8. [ ] 2023-11-15: Add Cirq backend support to `run simulate` command
+9. [ ] 2023-11-20: Add Braket backend support to `run simulate` command
 10. [ ] 2023-11-30: Implement cross-platform compatibility testing
 
 ### Phase 2: Advanced Features
-11. [ ] 2023-12-05: Implement `optimize` command for circuit optimization
-12. [ ] 2023-12-12: Implement `mitigate` command for error mitigation
-13. [ ] 2023-12-18: Implement `generate-tests` command for test generation
-14. [ ] 2023-12-25: Implement `test` command for running circuit tests
-15. [ ] 2024-01-05: Implement `resource-estimate` command
-16. [ ] 2024-01-12: Implement `estimate-cost` command
-17. [ ] 2024-01-20: Implement `benchmark` command for platform comparison
-18. [ ] 2024-01-30: Implement `finetune` command for hardware-specific optimization
+11. [ ] 2023-12-05: Implement `ir optimize` command for circuit optimization (Aligned with pipeline)
+12. [ ] 2023-12-12: Implement `ir mitigate` command for error mitigation (Aligned with pipeline)
+13. [ ] 2023-12-18: Implement `test generate` command for test generation (Aligned with pipeline)
+14. [ ] 2023-12-25: Implement `test run` command for running circuit tests (Aligned with pipeline)
+15. [ ] 2024-01-05: Implement `analyze resources` command for resource estimation (Aligned with pipeline)
+16. [ ] 2024-01-12: Implement `analyze cost` command for cost estimation (Aligned with pipeline)
+17. [ ] 2024-01-20: Implement `analyze benchmark` command for platform comparison (Aligned with pipeline)
+18. [ ] 2024-01-30: Implement `ir finetune` command for hardware-specific optimization (Aligned with pipeline)
 19. [ ] 2024-02-10: Create comprehensive benchmarking suite
 
 ### Phase 3: Deployment Capabilities
-20. [ ] 2024-02-15: Implement `generate-microservice` command
-21. [ ] 2024-02-25: Implement `generate-microservice-tests` command
-22. [ ] 2024-03-05: Implement `test-microservice` command
-23. [ ] 2024-03-15: Implement `package` command for application bundling
+20. [ ] 2024-02-15: Implement `service generate` command for microservice generation (Aligned with pipeline)
+21. [ ] 2024-02-25: Implement `service test-generate` command for microservice test generation (Aligned with pipeline)
+22. [ ] 2024-03-05: Implement `service test-run` command for running microservice tests (Aligned with pipeline)
+23. [ ] 2024-03-15: Implement `package create` command for application bundling (Aligned with pipeline)
 24. [ ] 2024-03-25: Add Docker integration for microservice containerization
 25. [ ] 2024-04-05: Implement versioning system for packages
 26. [ ] 2024-04-15: Create deployment documentation
 
 ### Phase 4: Ecosystem Integration
-27. [ ] 2024-04-25: Implement `publish` command for Hub Registry integration
+27. [ ] 2024-04-25: Implement `hub publish` command for Hub Registry integration (Aligned with pipeline)
 28. [ ] 2024-05-05: Add authentication system for Hub communication
 29. [ ] 2024-05-15: Implement token management for hardware access
 30. [ ] 2024-05-25: Create API wrappers for Hub communication

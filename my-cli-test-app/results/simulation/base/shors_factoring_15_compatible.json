@@ -1,0 +1,13 @@
+{
+  "platform": "qiskit",
+  "shots": 1024,
+  "counts": {
+    "0001": 241,
+    "0011": 257,
+    "0000": 273,
+    "0010": 253
+  },
+  "metadata": {
+    "status": "COMPLETED"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "valid": true,
+  "errors": [],
+  "warnings": [],
+  "details": {
+    "version": "2.0",
+    "includes": [
+      "qelib1.inc"
+    ],
+    "registers": {
+      "quantum": [
+        {
+          "name": "period",
+          "size": 4
+        },
+        {
+          "name": "target",
+          "size": 4
+        }
+      ],
+      "classical": [
+        {
+          "name": "measure",
+          "size": 4
+        }
+      ]
+    },
+    "gates": [],
+    "measurements": [
+      {
+        "quantum": "period",
+        "classical": "measure"
+      }
+    ]
+  }
+}

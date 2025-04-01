@@ -98,7 +98,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: pip install quantum-cli-sdk
       - run: mkdir -p results/simulation/base
-      - run: quantum-cli run simulate ir/openqasm/${{ matrix.source_file }}.qasm --platform qiskit --output results/simulation/base/${{ matrix.source_file }}.json --shots 1024
+      - run: quantum-cli run simulate ir/openqasm/${{ matrix.source_file }}.qasm --backend qiskit --output results/simulation/base/${{ matrix.source_file }}.json --shots 1024
 
   simulation-optimized:
     needs: simulation-base
@@ -110,7 +110,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: pip install quantum-cli-sdk
       - run: mkdir -p results/simulation/optimized
-      - run: quantum-cli run simulate ir/openqasm/optimized/${{ matrix.source_file }}.qasm --platform qiskit --output results/simulation/optimized/${{ matrix.source_file }}.json --shots 1024
+      - run: quantum-cli run simulate ir/openqasm/optimized/${{ matrix.source_file }}.qasm --backend qiskit --output results/simulation/optimized/${{ matrix.source_file }}.json --shots 1024
 
   error-mitigation:
     needs: simulation-optimized
@@ -134,7 +134,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: pip install quantum-cli-sdk
       - run: mkdir -p results/simulation/mitigated
-      - run: quantum-cli run simulate ir/openqasm/mitigated/${{ matrix.source_file }}.qasm --platform qiskit --output results/simulation/mitigated/${{ matrix.source_file }}.json --shots 1024
+      - run: quantum-cli run simulate ir/openqasm/mitigated/${{ matrix.source_file }}.qasm --backend qiskit --output results/simulation/mitigated/${{ matrix.source_file }}.json --shots 1024
 
   resource-cost-estimation:
     needs: simulation-mitigated

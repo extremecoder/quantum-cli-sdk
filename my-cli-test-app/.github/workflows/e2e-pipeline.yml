@@ -320,17 +320,12 @@ jobs:
   # --------------------------------------------------------------------------
   # Simulation (Base, Optimized, Mitigated) - Run in parallel
   # --------------------------------------------------------------------------
-  simulate-base:
-    # Depends only on security scan (can run alongside optimize/mitigate)
-    needs: [setup, security-scan]
+  simulation-base:
+    needs: [setup, generate-ir] # Depends on base IR
     runs-on: ubuntu-latest
     strategy:
       matrix:
         source_file: ${{ fromJson(needs.setup.outputs.source_files) }}
-        # Use simulator from setup job outputs (respecting workflow_dispatch)
-        platform: [ ${{ needs.setup.outputs.simulator }} ]
-        # Allow specifying multiple platforms if needed in future via matrix or input array
-        # platform: ["qiskit", "cirq", "braket"]
       fail-fast: false
     steps:
       - name: Checkout repository
@@ -351,35 +346,33 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Simulate Base IR on ${{ matrix.platform }}
+      - name: Simulate Base IR on qiskit
         run: |
-          mkdir -p results/simulation/base/${{ matrix.platform }}
+          mkdir -p results/simulation/base/qiskit
           if [ -f "ir/openqasm/${{ matrix.source_file }}.qasm" ]; then
             quantum-cli run simulate \
               ir/openqasm/${{ matrix.source_file }}.qasm \
-              --platform ${{ matrix.platform }} \
-              --shots ${{ needs.setup.outputs.shots }} \
-              --output results/simulation/base/${{ matrix.platform }}/${{ matrix.source_file }}.json
-            echo "Simulated base IR for ${{ matrix.source_file }} on ${{ matrix.platform }}"
+              --backend qiskit \
+              --output results/simulation/base/qiskit/${{ matrix.source_file }}.json \
+              --shots ${{ needs.setup.outputs.shots }}
+            echo "Simulated base IR for ${{ matrix.source_file }} on qiskit"
           else
             echo "Skipping base simulation, IR file not found: ir/openqasm/${{ matrix.source_file }}.qasm"
-            mkdir -p results/simulation/base/${{ matrix.platform }} && echo '{"status": "skipped", "reason": "Input IR file not found"}' > results/simulation/base/${{ matrix.platform }}/${{ matrix.source_file }}.json
+            mkdir -p results/simulation/base/qiskit && echo '{"status": "skipped", "reason": "Input IR file not found"}' > results/simulation/base/qiskit/${{ matrix.source_file }}.json
           fi
 
       - name: Commit base simulation results
         run: |
-          git add results/simulation/base/${{ matrix.platform }}/${{ matrix.source_file }}.json
-          git diff --staged --quiet || git commit -m "ci: Add base simulation results for ${{ matrix.source_file }} on ${{ matrix.platform }}"
-          git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for base simulation results ${{ matrix.source_file }} on ${{ matrix.platform }}"
+          git add results/simulation/base/qiskit/${{ matrix.source_file }}.json
+          git diff --staged --quiet || git commit -m "ci: Add base simulation results for ${{ matrix.source_file }} on qiskit"
+          git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for base simulation results ${{ matrix.source_file }} on qiskit"
 
-  simulate-optimized:
-    # Depends on optimization completing
-    needs: [setup, optimize]
+  simulation-optimized:
+    needs: [setup, optimize] # Depends on optimized IR
     runs-on: ubuntu-latest
     strategy:
       matrix:
         source_file: ${{ fromJson(needs.setup.outputs.source_files) }}
-        platform: [ ${{ needs.setup.outputs.simulator }} ]
       fail-fast: false
     steps:
       - name: Checkout repository
@@ -400,35 +393,33 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Simulate Optimized IR on ${{ matrix.platform }}
+      - name: Simulate Optimized IR on qiskit
         run: |
-          mkdir -p results/simulation/optimized/${{ matrix.platform }}
+          mkdir -p results/simulation/optimized/qiskit
           if [ -f "ir/openqasm/optimized/${{ matrix.source_file }}.qasm" ]; then
             quantum-cli run simulate \
               ir/openqasm/optimized/${{ matrix.source_file }}.qasm \
-              --platform ${{ matrix.platform }} \
-              --shots ${{ needs.setup.outputs.shots }} \
-              --output results/simulation/optimized/${{ matrix.platform }}/${{ matrix.source_file }}.json
-            echo "Simulated optimized IR for ${{ matrix.source_file }} on ${{ matrix.platform }}"
+              --backend qiskit \
+              --output results/simulation/optimized/qiskit/${{ matrix.source_file }}.json \
+              --shots ${{ needs.setup.outputs.shots }}
+            echo "Simulated optimized IR for ${{ matrix.source_file }} on qiskit"
           else
              echo "Skipping optimized simulation, IR file not found: ir/openqasm/optimized/${{ matrix.source_file }}.qasm"
-             mkdir -p results/simulation/optimized/${{ matrix.platform }} && echo '{"status": "skipped", "reason": "Input IR file not found"}' > results/simulation/optimized/${{ matrix.platform }}/${{ matrix.source_file }}.json
+             mkdir -p results/simulation/optimized/qiskit && echo '{"status": "skipped", "reason": "Input IR file not found"}' > results/simulation/optimized/qiskit/${{ matrix.source_file }}.json
           fi
 
       - name: Commit optimized simulation results
         run: |
-          git add results/simulation/optimized/${{ matrix.platform }}/${{ matrix.source_file }}.json
-          git diff --staged --quiet || git commit -m "ci: Add optimized simulation results for ${{ matrix.source_file }} on ${{ matrix.platform }}"
-          git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for optimized simulation results ${{ matrix.source_file }} on ${{ matrix.platform }}"
+          git add results/simulation/optimized/qiskit/${{ matrix.source_file }}.json
+          git diff --staged --quiet || git commit -m "ci: Add optimized simulation results for ${{ matrix.source_file }} on qiskit"
+          git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for optimized simulation results ${{ matrix.source_file }} on qiskit"
 
-  simulate-mitigated:
-    # Depends on mitigation completing
-    needs: [setup, mitigate]
+  simulation-mitigated:
+    needs: [setup, mitigate] # Depends on mitigated IR
     runs-on: ubuntu-latest
     strategy:
       matrix:
         source_file: ${{ fromJson(needs.setup.outputs.source_files) }}
-        platform: [ ${{ needs.setup.outputs.simulator }} ]
       fail-fast: false
     steps:
       - name: Checkout repository
@@ -449,26 +440,26 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Simulate Mitigated IR on ${{ matrix.platform }}
+      - name: Simulate Mitigated IR on qiskit
         run: |
-          mkdir -p results/simulation/mitigated/${{ matrix.platform }}
+          mkdir -p results/simulation/mitigated/qiskit
           if [ -f "ir/openqasm/mitigated/${{ matrix.source_file }}.qasm" ]; then
             quantum-cli run simulate \
               ir/openqasm/mitigated/${{ matrix.source_file }}.qasm \
-              --platform ${{ matrix.platform }} \
-              --shots ${{ needs.setup.outputs.shots }} \
-              --output results/simulation/mitigated/${{ matrix.platform }}/${{ matrix.source_file }}.json
-            echo "Simulated mitigated IR for ${{ matrix.source_file }} on ${{ matrix.platform }}"
+              --backend qiskit \
+              --output results/simulation/mitigated/qiskit/${{ matrix.source_file }}.json \
+              --shots ${{ needs.setup.outputs.shots }}
+            echo "Simulated mitigated IR for ${{ matrix.source_file }} on qiskit"
           else
             echo "Skipping mitigated simulation, IR file not found: ir/openqasm/mitigated/${{ matrix.source_file }}.qasm"
-            mkdir -p results/simulation/mitigated/${{ matrix.platform }} && echo '{"status": "skipped", "reason": "Input IR file not found"}' > results/simulation/mitigated/${{ matrix.platform }}/${{ matrix.source_file }}.json
+            mkdir -p results/simulation/mitigated/qiskit && echo '{"status": "skipped", "reason": "Input IR file not found"}' > results/simulation/mitigated/qiskit/${{ matrix.source_file }}.json
           fi
 
       - name: Commit mitigated simulation results
         run: |
-          git add results/simulation/mitigated/${{ matrix.platform }}/${{ matrix.source_file }}.json
-          git diff --staged --quiet || git commit -m "ci: Add mitigated simulation results for ${{ matrix.source_file }} on ${{ matrix.platform }}"
-          git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for mitigated simulation results ${{ matrix.source_file }} on ${{ matrix.platform }}"
+          git add results/simulation/mitigated/qiskit/${{ matrix.source_file }}.json
+          git diff --staged --quiet || git commit -m "ci: Add mitigated simulation results for ${{ matrix.source_file }} on qiskit"
+          git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for mitigated simulation results ${{ matrix.source_file }} on qiskit"
 
   # --------------------------------------------------------------------------
   # Testing (Generated Unit Tests)
@@ -1094,5 +1085,3 @@ jobs:
   #         else
   #           echo "$OLD_PIPELINE not found, skipping removal."
   #         fi
-
-</rewritten_file>

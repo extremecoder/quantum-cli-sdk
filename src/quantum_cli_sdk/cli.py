@@ -12,10 +12,31 @@ from pathlib import Path
 import datetime
 
 from . import __version__
-from .quantum_circuit import QuantumCircuit
 from .simulator import run_simulation
+
+# Import command modules or specific functions
 from .commands import run
-from .commands import generate_ir, simulate, hw_run, estimate_resources, template, mitigate, calculate_cost, init
+from .commands import generate_ir as ir_generate_mod
+from .commands import validate as ir_validate_mod
+from .commands import template
+from .commands import init
+from .commands import security_scan as security_scan_mod
+from .commands import simulate as simulate_mod
+# from .commands import hw_run
+# from .commands import estimate_resources
+# from .commands import mitigate
+# from .commands import calculate_cost
+# from .commands import optimize as ir_optimize_mod
+# from .commands import mitigate as ir_mitigate_mod
+# from .commands import finetune as ir_finetune_mod
+# from .commands import resources as analyze_resources_mod
+# from .commands import cost as analyze_cost_mod
+# from .commands import benchmark as analyze_benchmark_mod
+# from .commands import test_cmd as test_mod
+# from .commands import service as service_mod
+# from .commands import package as package_mod
+# from .commands import hub as hub_mod
+
 from .config import get_config, initialize_config
 from .cache import get_cache, initialize_cache
 from .transpiler import get_pass_manager, initialize_transpiler
@@ -94,6 +115,150 @@ def initialize_sdk():
             logger.error(f"Error discovering plugins: {e}")
     
     return config
+
+def setup_ir_commands(subparsers):
+    """Setup Intermediate Representation (IR) commands."""
+    ir_parser = subparsers.add_parser("ir", help="Commands for managing Intermediate Representation (IR)")
+    ir_subparsers = ir_parser.add_subparsers(dest="ir_cmd", help="IR command", required=True)
+
+    # ir generate
+    generate_parser = ir_subparsers.add_parser("generate", help="Generate IR (OpenQASM 2.0) from source code")
+    generate_parser.add_argument("--source", required=True, help="Source Python file path containing circuit definition")
+    generate_parser.add_argument("--dest", required=True, help="Destination file path for the generated OpenQASM IR")
+    # Add LLM arguments
+    generate_parser.add_argument("--llm-provider", help="LLM provider to use for generation (e.g., 'togetherai')")
+    generate_parser.add_argument("--llm-model", help="Specific LLM model name to use (requires --llm-provider)")
+
+    # ir validate
+    validate_parser = ir_subparsers.add_parser("validate", help="Validate IR file syntax and semantics")
+    validate_parser.add_argument("ir_file", help="Path to the IR file to validate")
+    validate_parser.add_argument("--output", help="Optional output file for validation results (JSON)")
+    validate_parser.add_argument("--llm-url", help="Optional URL to LLM service for enhanced validation")
+
+    # ir optimize (placeholder)
+    # optimize_parser = ir_subparsers.add_parser("optimize", help="Optimize the quantum circuit IR (placeholder)")
+    # optimize_parser.add_argument("ir_file", help="Path to the input IR file")
+    # optimize_parser.add_argument("--output", required=True, help="Path to save the optimized IR file")
+    # Add optimization level/strategy flags later
+
+    # ir mitigate (placeholder)
+    # mitigate_parser = ir_subparsers.add_parser("mitigate", help="Apply error mitigation techniques to the IR (placeholder)")
+    # mitigate_parser.add_argument("ir_file", help="Path to the input IR file (usually optimized)")
+    # mitigate_parser.add_argument("--output", required=True, help="Path to save the mitigated IR file")
+    # Add mitigation technique flags later
+
+    # ir finetune (placeholder)
+    # finetune_parser = ir_subparsers.add_parser("finetune", help="Fine-tune circuit based on analysis results (placeholder)")
+    # finetune_parser.add_argument("ir_file", help="Path to the input IR file (usually mitigated)")
+    # finetune_parser.add_argument("--cost-file", help="Path to cost estimation results")
+    # finetune_parser.add_argument("--benchmark-file", help="Path to benchmark results")
+    # finetune_parser.add_argument("--output", required=True, help="Path to save fine-tuning results (JSON)")
+
+def setup_run_commands(subparsers):
+    """Setup commands for running circuits (simulation, hardware)."""
+    run_parser = subparsers.add_parser("run", help="Run quantum circuits on simulators or hardware")
+    run_subparsers = run_parser.add_subparsers(dest="run_cmd", help="Run command", required=True)
+
+    # run simulate
+    simulate_parser = run_subparsers.add_parser("simulate", help="Run a circuit on a simulator")
+    simulate_parser.add_argument("qasm_file", help="Path to the OpenQASM file to simulate")
+    simulate_parser.add_argument("--backend", required=True, choices=['qiskit', 'cirq', 'braket'], help="Simulation backend to use")
+    simulate_parser.add_argument("--output", help="Optional output file for simulation results (JSON)")
+    simulate_parser.add_argument("--shots", type=int, default=1024, help="Number of simulation shots")
+    # Add other simulation options later (e.g., --noise-model)
+
+    # run hw (placeholder)
+    # hw_parser = run_subparsers.add_parser("hw", help="Run a quantum circuit on hardware (placeholder)")
+    # hw_parser.add_argument("ir_file", help="Path to the input IR file")
+    # hw_parser.add_argument("--platform", required=True, help="Target hardware platform (e.g., ibm, aws, google)")
+    # hw_parser.add_argument("--device", required=True, help="Specific hardware device name")
+    # hw_parser.add_argument("--shots", type=int, default=1024, help="Number of shots")
+    # hw_parser.add_argument("--output", required=True, help="Path to save hardware execution results (JSON)")
+    # Add credentials, job management flags later
+
+def setup_analyze_commands(subparsers):
+    """Setup commands for circuit analysis."""
+    analyze_parser = subparsers.add_parser("analyze", help="Analyze quantum circuit properties")
+    analyze_subparsers = analyze_parser.add_subparsers(dest="analyze_cmd", help="Analysis command")
+
+    # analyze resources (placeholder)
+    # resources_parser = analyze_subparsers.add_parser("resources", help="Estimate resource requirements (qubits, gates)")
+    # resources_parser.add_argument("ir_file", help="Path to the input IR file")
+    # resources_parser.add_argument("--output", required=True, help="Path to save resource estimation results (JSON)")
+
+    # analyze cost (placeholder)
+    # cost_parser = analyze_subparsers.add_parser("cost", help="Estimate execution cost on different platforms")
+    # cost_parser.add_argument("ir_file", help="Path to the input IR file")
+    # cost_parser.add_argument("--resource-file", help="Path to resource estimation file (optional input)") # Added optional input
+    # cost_parser.add_argument("--output", required=True, help="Path to save cost estimation results (JSON)")
+    # Add platform/provider flags later
+
+    # analyze benchmark (placeholder)
+    # benchmark_parser = analyze_subparsers.add_parser("benchmark", help="Benchmark circuit performance")
+    # benchmark_parser.add_argument("ir_file", help="Path to the input IR file")
+    # benchmark_parser.add_argument("--output", required=True, help="Path to save benchmark results (JSON)")
+    # Add comparison flags later
+
+def setup_test_commands(subparsers):
+    """Setup commands for testing quantum circuits."""
+    test_parser = subparsers.add_parser("test", help="Generate and run tests for quantum circuits")
+    test_subparsers = test_parser.add_subparsers(dest="test_cmd", help="Test command")
+
+    # test generate (placeholder)
+    # generate_parser = test_subparsers.add_parser("generate", help="Generate test code from an IR file")
+    # generate_parser.add_argument("ir_file", help="Path to the input IR file (usually mitigated)")
+    # generate_parser.add_argument("--output", required=True, help="Path to save the generated Python test file")
+
+    # test run (placeholder)
+    # run_parser = test_subparsers.add_parser("run", help="Run generated test file(s)")
+    # run_parser.add_argument("test_file", help="Path to the generated test file (or directory)")
+    # run_parser.add_argument("--output", required=True, help="Path to save test results (JSON)")
+    # Add test runner options (e.g., pytest args) later
+
+def setup_service_commands(subparsers):
+    """Setup commands for microservice management."""
+    service_parser = subparsers.add_parser("service", help="Generate and test microservice wrappers")
+    service_subparsers = service_parser.add_subparsers(dest="service_cmd", help="Service command")
+
+    # service generate (placeholder)
+    # generate_parser = service_subparsers.add_parser("generate", help="Generate microservice code from an IR file")
+    # generate_parser.add_argument("ir_file", help="Path to the input IR file (usually mitigated)")
+    # generate_parser.add_argument("--output-dir", required=True, help="Directory to save the generated microservice code")
+
+    # service test-generate (placeholder)
+    # test_generate_parser = service_subparsers.add_parser("test-generate", help="Generate tests for a microservice")
+    # test_generate_parser.add_argument("service_dir", help="Path to the generated microservice directory")
+    # test_generate_parser.add_argument("--output", required=True, help="Directory to save the generated service tests (e.g., service_dir/tests)")
+
+    # service test-run (placeholder)
+    # test_run_parser = service_subparsers.add_parser("test-run", help="Run tests for a microservice (requires Docker)")
+    # test_run_parser.add_argument("service_dir", help="Path to the generated microservice directory")
+    # test_run_parser.add_argument("--test-dir", required=True, help="Path to the directory containing service tests")
+    # test_run_parser.add_argument("--output", required=True, help="Path to save service test results (JSON)")
+
+def setup_package_commands(subparsers):
+    """Setup commands for application packaging."""
+    package_parser = subparsers.add_parser("package", help="Package quantum applications")
+    package_subparsers = package_parser.add_subparsers(dest="package_cmd", help="Package command")
+
+    # package create (placeholder)
+    # create_parser = package_subparsers.add_parser("create", help="Create a distributable application package")
+    # create_parser.add_argument("--source-dir", required=True, help="Path to the microservice source directory")
+    # create_parser.add_argument("--circuit-file", required=True, help="Path to the final IR file (e.g., mitigated QASM)")
+    # create_parser.add_argument("--metadata-file", required=True, help="Path to metadata file (e.g., resource estimation JSON)")
+    # create_parser.add_argument("--output-path", required=True, help="Path to save the output package (e.g., .zip file)")
+
+def setup_hub_commands(subparsers):
+    """Setup commands for Quantum Hub interaction."""
+    hub_parser = subparsers.add_parser("hub", help="Interact with the Quantum Hub")
+    hub_subparsers = hub_parser.add_subparsers(dest="hub_cmd", help="Hub command")
+
+    # hub publish (placeholder)
+    # publish_parser = hub_subparsers.add_parser("publish", help="Publish a packaged application to the Hub")
+    # publish_parser.add_argument("package_path", help="Path to the application package file (.zip)")
+    # publish_parser.add_argument("--username", help="Quantum Hub username (or use env var/config)")
+    # publish_parser.add_argument("--token", help="Quantum Hub API token (or use env var/config)")
+    # Add other metadata flags if needed (e.g., --description, --tags)
 
 def setup_versioning_commands(subparsers):
     """Setup versioning-related commands."""
@@ -390,444 +555,315 @@ def setup_init_commands(subparsers):
     create_parser.add_argument("directory", nargs='?', default='.', help="Directory name for the new project (default: current directory)")
     create_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing files")
 
-def main():
-    """Main entry point for the CLI."""
-    # Parse arguments
-    parser = argparse.ArgumentParser(description=f"Quantum CLI SDK v{__version__}")
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("--profile", help="Configuration profile to use")
-    
-    # Add subparsers for commands
-    subparsers = parser.add_subparsers(dest="command", help="Command")
-    
-    # Run simulation
-    run_parser = subparsers.add_parser("run", help="Run a quantum circuit")
-    run_parser.add_argument("--circuit", "-c", required=True, help="Path to circuit file")
-    run_parser.add_argument("--shots", "-s", type=int, default=1024, help="Number of shots")
-    run_parser.add_argument("--output", "-o", help="Output file path")
-    
-    # Generate IR command
-    ir_parser = subparsers.add_parser("generate-ir", help="Generate intermediate representation")
-    ir_parser.add_argument("--source", "-s", required=True, help="Source circuit file")
-    ir_parser.add_argument("--dest", "-d", help="Destination IR file")
-    ir_parser.add_argument("--format", "-f", choices=["qasm", "qiskit", "cirq"], default="qasm", help="Output format")
-    
-    # Simulate command
-    simulate_parser = subparsers.add_parser("simulate", help="Simulate a quantum circuit")
-    simulate_parser.add_argument("--source", "-s", required=True, help="Source circuit file")
-    simulate_parser.add_argument("--dest", "-d", help="Destination results file")
-    simulate_parser.add_argument("--simulator", choices=["qiskit", "cirq", "braket", "all"], 
-                                default=config_manager.get_default_param("simulate", "simulator"), 
-                                help="Simulator backend")
-    simulate_parser.add_argument("--shots", type=int, 
-                               default=config_manager.get_default_param("simulate", "shots"), 
-                               help="Number of shots")
-    simulate_parser.add_argument("--use-cache", action="store_true", help="Use simulation cache if available")
-    simulate_parser.add_argument("--visualize", action="store_true", help="Visualize results")
-    
-    # Hardware run command
-    hw_run_parser = subparsers.add_parser("hw-run", help="Run on quantum hardware")
-    hw_run_parser.add_argument("--source", "-s", required=True, help="Source circuit file")
-    hw_run_parser.add_argument("--dest", "-d", help="Destination results file")
-    hw_run_parser.add_argument("--platform", choices=["ibm", "aws", "gcp", "azure"], 
-                              default=config_manager.get_default_param("hw-run", "platform"), 
-                              help="Hardware platform")
-    hw_run_parser.add_argument("--device", help="Target quantum device")
-    hw_run_parser.add_argument("--shots", type=int, 
-                               default=config_manager.get_default_param("hw-run", "shots"), 
-                               help="Number of shots")
-    hw_run_parser.add_argument("--credentials", help="Path to credentials file")
-    
-    # Estimate resources command
-    estimate_parser = subparsers.add_parser("estimate-resources", help="Estimate resources for a circuit")
-    estimate_parser.add_argument("--source", "-s", required=True, help="Source circuit file")
-    estimate_parser.add_argument("--dest", "-d", help="Destination report file")
-    estimate_parser.add_argument("--detailed", action="store_true", 
-                                default=config_manager.get_default_param("estimate-resources", "detailed"),
-                                help="Include detailed breakdown")
-    estimate_parser.add_argument("--target", choices=["generic", "ibm", "aws", "gcp", "azure"], 
-                               default=config_manager.get_default_param("estimate-resources", "target"),
-                               help="Target architecture")
-    
-    # Calculate cost command
-    cost_parser = subparsers.add_parser("calculate-cost", help="Calculate cost of running a circuit")
-    cost_parser.add_argument("--source", "-s", required=True, help="Source circuit file")
-    cost_parser.add_argument("--platform", choices=["ibm", "aws", "gcp", "azure", "all"], 
-                            default=",".join(config_manager.get_default_param("calculate-cost", "providers")),
-                            help="Hardware platform(s)")
-    cost_parser.add_argument("--shots", type=int, default=1000, help="Number of shots")
-    cost_parser.add_argument("--currency", default=config_manager.get_default_param("calculate-cost", "currency"), 
-                            help="Currency (USD, EUR, etc.)")
-    cost_parser.add_argument("--output-format", choices=["text", "json", "csv"], default="text", help="Output format")
-    cost_parser.add_argument("--output-file", help="Output file path")
-    
-    # Template commands
-    template_parser = subparsers.add_parser("template", help="Manage circuit templates")
+def setup_template_commands(subparsers):
+    """Setup template management commands (Placeholder)."""
+    template_parser = subparsers.add_parser("template", help="Manage circuit templates (Placeholder)")
     template_subparsers = template_parser.add_subparsers(dest="template_cmd", help="Template command")
-    
-    # List templates
-    list_parser = template_subparsers.add_parser("list", help="List available templates")
-    
-    # Get template
-    get_parser = template_subparsers.add_parser("get", help="Get a template")
-    get_parser.add_argument("template", help="Template name")
-    get_parser.add_argument("--dest", "-d", help="Destination file")
-    
-    # Error mitigation commands
-    mitigate_parser = subparsers.add_parser("mitigate", help="Apply error mitigation")
-    mitigate_parser.add_argument("--source", "-s", required=True, help="Source circuit or results file")
-    mitigate_parser.add_argument("--dest", "-d", help="Destination file")
-    mitigate_parser.add_argument("--technique", choices=["zne", "pec", "cdr", "dd"], 
-                               default=config_manager.get_default_param("mitigate", "method"),
-                               help="Mitigation technique")
-    mitigate_parser.add_argument("--noise-model", help="Path to noise model file")
-    
-    # Interactive mode command
-    interactive_parser = subparsers.add_parser("interactive", help="Start interactive shell")
-    
-    # Visualize command
-    visualize_parser = subparsers.add_parser("visualize", help="Visualize circuit or results")
-    visualize_subparsers = visualize_parser.add_subparsers(dest="visualize_cmd", help="Visualization type")
-    
-    # Visualize circuit
-    circuit_viz_parser = visualize_subparsers.add_parser("circuit", help="Visualize a quantum circuit")
-    circuit_viz_parser.add_argument("--source", "-s", required=True, help="Source circuit file")
-    circuit_viz_parser.add_argument("--output", "-o", help="Output file path")
-    circuit_viz_parser.add_argument("--format", choices=["text", "latex", "mpl", "html"], default="text", help="Output format")
-    
-    # Visualize results
-    results_viz_parser = visualize_subparsers.add_parser("results", help="Visualize simulation results")
-    results_viz_parser.add_argument("--source", "-s", required=True, help="Source results file")
-    results_viz_parser.add_argument("--output", "-o", help="Output file path")
-    results_viz_parser.add_argument("--type", choices=["histogram", "statevector", "hinton", "qsphere"], default="histogram", help="Visualization type")
-    results_viz_parser.add_argument("--interactive", action="store_true", help="Generate interactive visualization")
-    
-    # Setup additional command parsers
-    setup_versioning_commands(subparsers)
-    setup_marketplace_commands(subparsers)
-    setup_sharing_commands(subparsers)
+
+    # Placeholder subcommands (can be uncommented/implemented later)
+    # list_parser = template_subparsers.add_parser("list", help="List available templates")
+    # get_parser = template_subparsers.add_parser("get", help="Get a template")
+    # get_parser.add_argument("name", help="Template name")
+    # get_parser.add_argument("--dest", "-d", help="Destination file")
+
+def setup_visualization_commands(subparsers):
+    """Setup visualization commands."""
+    vis_parser = subparsers.add_parser("visualize", help="Visualize circuits or results")
+    vis_subparsers = vis_parser.add_subparsers(dest="visualize_cmd", help="Visualization command", required=True)
+
+    # visualize circuit
+    vis_circuit_parser = vis_subparsers.add_parser("circuit", help="Visualize a quantum circuit")
+    vis_circuit_parser.add_argument("--source", required=True, help="Path to the circuit file (QASM or other supported format)")
+    vis_circuit_parser.add_argument("--output", help="Output file path (e.g., .png, .txt, .html)")
+    vis_circuit_parser.add_argument("--format", choices=["text", "mpl", "latex", "html"], default="mpl", help="Output format")
+
+    # visualize results
+    vis_results_parser = vis_subparsers.add_parser("results", help="Visualize simulation or hardware results")
+    vis_results_parser.add_argument("--source", required=True, help="Path to the results file (JSON)")
+    vis_results_parser.add_argument("--output", help="Output file path (e.g., .png)")
+    vis_results_parser.add_argument("--type", choices=["histogram", "statevector", "hinton", "qsphere"], default="histogram", help="Type of plot")
+    vis_results_parser.add_argument("--interactive", action="store_true", help="Show interactive plot")
+
+def setup_security_commands(subparsers):
+    """Setup security scanning commands."""
+    security_parser = subparsers.add_parser("security", help="Commands for security analysis")
+    security_subparsers = security_parser.add_subparsers(dest="security_cmd", help="Security command", required=True)
+
+    # security scan
+    scan_parser = security_subparsers.add_parser("scan", help="Scan an IR file for potential security issues")
+    scan_parser.add_argument("ir_file", help="Path to the IR file to scan (e.g., OpenQASM)")
+    scan_parser.add_argument("--output", help="Optional output file for scan results (JSON)")
+
+def main():
+    """Main entry point for the Quantum CLI SDK."""
+    config = initialize_sdk()
+
+    parser = argparse.ArgumentParser(description="Quantum CLI SDK")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    # Global argument for profile selection
+    parser.add_argument("--profile", help="Specify configuration profile to use", default="default")
+
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # Setup command groups based on pipeline stages
+    setup_ir_commands(subparsers)
+    setup_run_commands(subparsers)      # Includes simulate
+    setup_analyze_commands(subparsers)  # Placeholders commented
+    setup_test_commands(subparsers)     # Placeholders commented
+    setup_service_commands(subparsers)  # Placeholders commented
+    setup_package_commands(subparsers)  # Placeholders commented
+    setup_hub_commands(subparsers)      # Placeholders commented
+
+    # Setup other command groups
+    setup_init_commands(subparsers)
     setup_compare_commands(subparsers)
-    setup_hardware_commands(subparsers)
-    setup_job_commands(subparsers)
     setup_config_commands(subparsers)
     setup_dependency_commands(subparsers)
-    setup_init_commands(subparsers)
-    
-    # Initialize SDK components
-    initialize_sdk()
-    
-    # Discover and register plugins
-    discover_plugins()
-    
-    # Set up plugin subparsers
+    setup_hardware_commands(subparsers) # Keeping for now, maybe integrate into run/analyze?
+    setup_job_commands(subparsers)
+    setup_marketplace_commands(subparsers)
+    setup_sharing_commands(subparsers)
+    setup_template_commands(subparsers)
+    setup_versioning_commands(subparsers)
+    setup_visualization_commands(subparsers)
+    setup_security_commands(subparsers)
+
+    # Setup interactive mode command
+    interactive_parser = subparsers.add_parser("interactive", help="Start interactive shell")
+
+    # Discover and setup plugin commands
     setup_plugin_subparsers(subparsers)
-    
+
     # Parse arguments
+    if len(sys.argv) <= 1:
+        # If no command is provided, print help and exit
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+
     args = parser.parse_args()
-    
-    # If profile is specified, set it as the active profile
-    if args.profile:
-        config = get_config()
-        if not config.set_active_profile(args.profile):
-            logger.error(f"Profile '{args.profile}' not found")
-            return 1
-    
-    # Handle commands
-    if args.command == "run":
-        run.run_circuit(args.circuit, args.shots, args.output)
-    
-    elif args.command == "generate-ir":
-        generate_ir.generate_ir(args.source, args.dest, args.format)
-    
-    elif args.command == "simulate":
-        simulate.simulate_circuit(args.source, args.dest, args.simulator, args.shots, args.use_cache, args.visualize)
-    
-    elif args.command == "hw-run":
-        hw_run.run_on_hardware(args.source, args.dest, args.platform, args.device, args.shots, args.credentials)
-    
-    elif args.command == "estimate-resources":
-        estimate_resources.estimate_resources(args.source, args.dest, args.detailed, args.target)
-    
-    elif args.command == "calculate-cost":
-        calculate_cost.calculate_cost(args.source, args.platform.split(','), args.shots, args.currency, args.output_format, args.output_file)
-    
-    elif args.command == "template":
-        if args.template_cmd == "list":
-            template.list_templates()
-        elif args.template_cmd == "get":
-            template.get_template(args.template, args.dest)
-        else:
-            template_parser.print_help()
-    
-    elif args.command == "mitigate":
-        mitigate.apply_mitigation(args.source, args.dest, args.technique, args.noise_model)
-    
-    elif args.command == "interactive":
-        start_shell()
-    
-    elif args.command == "visualize":
-        if args.visualize_cmd == "circuit":
-            visualize_circuit_command(args.source, args.output, args.format)
-        elif args.visualize_cmd == "results":
-            visualize_results_command(args.source, args.output, args.type, args.interactive)
-        else:
-            visualize_parser.print_help()
-    
-    elif args.command == "version":
-        handle_versioning_commands(args)
-    
-    elif args.command == "marketplace":
-        handle_marketplace_commands(args)
-    
-    elif args.command == "share":
-        handle_sharing_commands(args)
-    
-    elif args.command == "compare":
-        handle_compare_commands(args)
-        
-    elif args.command == "find-hardware":
-        handle_hardware_commands(args)
-        
-    elif args.command == "jobs":
-        handle_job_commands(args)
-        
-    elif args.command == "config":
-        handle_config_commands(args)
-        
-    elif args.command == "deps":
-        handle_dependency_commands(args)
-    
+
+    # Load the specified profile
+    if args.profile != "default":
+         try:
+             config_manager.switch_profile(args.profile)
+             logger.info(f"Switched to profile: {args.profile}")
+             # Re-initialize components based on new profile settings if necessary
+             config = initialize_sdk() 
+         except ValueError as e:
+             print(f"Error switching profile: {e}", file=sys.stderr)
+             sys.exit(1)
+
+    # --- Command Dispatch Logic --- 
+
+    if args.command == "ir":
+        handle_ir_commands(args)
+    elif args.command == "run":
+        handle_run_commands(args)
+    elif args.command == "analyze":
+        # handle_analyze_commands(args) # Commented out
+        print(f"Command group '{args.command}' is not fully implemented yet.", file=sys.stderr)
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+    elif args.command == "test":
+        # handle_test_commands(args) # Commented out
+        print(f"Command group '{args.command}' is not fully implemented yet.", file=sys.stderr)
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+    elif args.command == "service":
+        # handle_service_commands(args) # Commented out
+        print(f"Command group '{args.command}' is not fully implemented yet.", file=sys.stderr)
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+    elif args.command == "package":
+        # handle_package_commands(args) # Commented out
+        print(f"Command group '{args.command}' is not fully implemented yet.", file=sys.stderr)
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+    elif args.command == "hub":
+        # handle_hub_commands(args) # Commented out
+        print(f"Command group '{args.command}' is not fully implemented yet.", file=sys.stderr)
+        parser.print_help(sys.stderr)
+        sys.exit(1)
     elif args.command == "init":
         handle_init_commands(args)
-        
-    # Handle plugin commands
-    elif args.command in get_registered_command_plugins():
-        execute_plugin_command(args.command, args)
-    
+    elif args.command == "version":
+        handle_versioning_commands(args)
+    elif args.command == "marketplace":
+        handle_marketplace_commands(args)
+    elif args.command == "share":
+        handle_sharing_commands(args)
+    elif args.command == "compare":
+        handle_compare_commands(args)
+    elif args.command == "hardware": # Keep old hardware command handler for now
+        handle_hardware_commands(args)
+    elif args.command == "jobs":
+        handle_job_commands(args)
+    elif args.command == "config":
+        handle_config_commands(args)
+    elif args.command == "deps":
+        handle_dependency_commands(args)
+    elif args.command == "visualize":
+        handle_visualization_commands(args)
+    elif args.command == "interactive":
+        start_shell()
+    elif args.command == "security":
+        handle_security_commands(args)
     else:
-        parser.print_help()
-    
-    return 0
+        # Check if it's a plugin command
+        if args.command in get_registered_command_plugins():
+            execute_plugin_command(args.command, args)
+        else:
+            # If the command is not recognized and not a plugin, show help
+            print(f"Error: Unknown command '{args.command}'", file=sys.stderr)
+            parser.print_help(sys.stderr)
+            sys.exit(1)
 
-def handle_versioning_commands(args):
-    """Handle versioning commands."""
-    if args.version_cmd == "init":
-        init_repo(args.repo_path)
-    elif args.version_cmd == "commit":
-        commit_circuit(args.repo_path, args.circuit_name, args.circuit_file, args.message, args.author)
-    elif args.version_cmd == "get":
-        get_circuit_version(args.repo_path, args.circuit_name, args.version_id, args.output_file)
-    elif args.version_cmd == "list":
-        list_circuit_versions(args.repo_path, args.circuit_name)
-    elif args.version_cmd == "checkout":
-        checkout_version(args.repo_path, args.circuit_name, args.version_id, args.output_file)
+# --- Command Handler Functions ---
+
+def handle_ir_commands(args):
+    """Handle ir subcommands."""
+    if args.ir_cmd == "generate":
+        # Pass LLM args to the generate_ir function
+        result = ir_generate_mod.generate_ir(
+            source=args.source, 
+            dest=args.dest, 
+            llm_provider=args.llm_provider, 
+            llm_model=args.llm_model
+        )
+        if result is None:
+             sys.exit(1) # Exit with error if generation failed
+    elif args.ir_cmd == "validate":
+        result = ir_validate_mod.validate_circuit(
+            source_file=args.ir_file,
+            dest_file=args.output,
+            llm_url=args.llm_url
+        )
+        if not result:
+            sys.exit(1) # Exit with error if validation failed
     else:
-        logger.error("Please specify a versioning command")
+        print(f"Error: Unknown ir command '{args.ir_cmd}'", file=sys.stderr)
         sys.exit(1)
 
-def handle_marketplace_commands(args):
-    """Handle marketplace commands."""
-    if args.marketplace_cmd == "browse":
-        browse_marketplace(args.tag, args.sort_by)
-    elif args.marketplace_cmd == "search":
-        search_marketplace(args.query)
-    elif args.marketplace_cmd == "get":
-        get_algorithm_details(args.algorithm_id)
-    elif args.marketplace_cmd == "download":
-        download_algorithm(args.algorithm_id, args.output_path)
-    elif args.marketplace_cmd == "publish":
-        tags = args.tags.split(",") if args.tags else []
-        requirements = args.requirements.split(",") if args.requirements else []
-        publish_algorithm(args.name, args.description, args.circuit_file, 
-                         args.version, tags, requirements, args.example_usage)
-    elif args.marketplace_cmd == "review":
-        submit_review(args.algorithm_id, args.rating, args.comment)
-    elif args.marketplace_cmd == "configure":
-        configure_marketplace(args.api_key, args.endpoint)
+def handle_run_commands(args):
+    """Handle run subcommands (simulate, hw)."""
+    if args.run_cmd == "simulate":
+        results = simulate_mod.run_simulation(
+            source_file=args.qasm_file,
+            backend=args.backend,
+            output=args.output,
+            shots=args.shots
+            # Pass other kwargs if added later
+        )
+        if results is None:
+            print("Simulation command failed.", file=sys.stderr)
+            sys.exit(1)
+        else:
+            # Output is handled within run_simulation if path provided
+            # Optionally print counts to stdout if no output file?
+            if args.output is None:
+                 print("Simulation Results:")
+                 print(json.dumps(results.get('counts', {}), indent=2))
+            print("Simulation command completed.")
+
+    # elif args.run_cmd == "hw":
+    #     # Placeholder for hardware execution
+    #     print("Hardware execution not yet implemented.")
+    #     sys.exit(1)
     else:
-        logger.error("Please specify a marketplace command")
+        print(f"Error: Unknown run command '{args.run_cmd}'", file=sys.stderr)
         sys.exit(1)
 
-def handle_sharing_commands(args):
-    """Handle sharing commands."""
-    if args.sharing_cmd == "circuit":
-        recipients = args.recipients.split(",")
-        tags = args.tags.split(",") if args.tags else []
-        share_circuit(args.repo_path, args.circuit_name, args.version_id, 
-                     args.description, args.storage_path, recipients, args.permission, tags)
-    elif args.sharing_cmd == "list":
-        if args.shared_by_me:
-            list_my_shared_circuits(args.storage_path)
-        elif args.shared_with_me:
-            list_shared_with_me(args.storage_path)
+# def handle_analyze_commands(args): # Commented out
+#     """Handle analyze subcommands."""
+#     if args.analyze_cmd == "resources":
+#         print(f"Placeholder: Analyzing resources for {args.ir_file} to {args.output}")
+#         # result = analyze_resources_mod.estimate_resources(ir_file=args.ir_file, output=args.output)
+#         # if result is None: sys.exit(1)
+#     elif args.analyze_cmd == "cost":
+#         print(f"Placeholder: Analyzing cost for {args.ir_file} to {args.output}")
+#         # result = analyze_cost_mod.estimate_cost(ir_file=args.ir_file, resource_file=args.resource_file, output=args.output)
+#         # if result is None: sys.exit(1)
+#     elif args.analyze_cmd == "benchmark":
+#         print(f"Placeholder: Benchmarking {args.ir_file} to {args.output}")
+#         # result = analyze_benchmark_mod.benchmark_circuit(ir_file=args.ir_file, output=args.output)
+#         # if result is None: sys.exit(1)
+#     else:
+#         print(f"Error: Unknown analyze command '{args.analyze_cmd}'", file=sys.stderr)
+#         sys.exit(1)
+
+# def handle_test_commands(args): # Commented out
+#     """Handle test subcommands."""
+#     if args.test_cmd == "generate":
+#         print(f"Placeholder: Generating tests for {args.ir_file} to {args.output}")
+#         # result = test_mod.generate_tests(ir_file=args.ir_file, output=args.output)
+#         # if result is None: sys.exit(1)
+#     elif args.test_cmd == "run":
+#         print(f"Placeholder: Running tests in {args.test_file}, saving results to {args.output}")
+#         # result = test_mod.run_tests(test_file=args.test_file, output=args.output)
+#         # if result is None: sys.exit(1)
+#     else:
+#         print(f"Error: Unknown test command '{args.test_cmd}'", file=sys.stderr)
+#         sys.exit(1)
+
+# def handle_service_commands(args): # Commented out
+#     """Handle service subcommands."""
+#     if args.service_cmd == "generate":
+#         print(f"Placeholder: Generating service for {args.ir_file} in {args.output_dir}")
+#         # result = service_mod.generate_service(ir_file=args.ir_file, output_dir=args.output_dir)
+#         # if result is None: sys.exit(1)
+#     elif args.service_cmd == "test-generate":
+#         print(f"Placeholder: Generating service tests for {args.service_dir} in {args.output}")
+#         # result = service_mod.generate_service_tests(service_dir=args.service_dir, output=args.output)
+#         # if result is None: sys.exit(1)
+#     elif args.service_cmd == "test-run":
+#         print(f"Placeholder: Running service tests in {args.test_dir} for {args.service_dir}, saving results to {args.output}")
+#         # result = service_mod.run_service_tests(service_dir=args.service_dir, test_dir=args.test_dir, output=args.output)
+#         # if result is None: sys.exit(1)
+#     else:
+#         print(f"Error: Unknown service command '{args.service_cmd}'", file=sys.stderr)
+#         sys.exit(1)
+
+# def handle_package_commands(args): # Commented out
+#     """Handle package subcommands."""
+#     if args.package_cmd == "create":
+#         print(f"Placeholder: Creating package from {args.source_dir} and {args.circuit_file} to {args.output_path}")
+#         # result = package_mod.create_package(source_dir=args.source_dir, circuit_file=args.circuit_file, metadata_file=args.metadata_file, output_path=args.output_path)
+#         # if result is None: sys.exit(1)
+#     else:
+#         print(f"Error: Unknown package command '{args.package_cmd}'", file=sys.stderr)
+#         sys.exit(1)
+
+# def handle_hub_commands(args): # Commented out
+#     """Handle hub subcommands."""
+#     if args.hub_cmd == "publish":
+#         print(f"Placeholder: Publishing package {args.package_path} to Hub...")
+#         # result = hub_mod.publish_package(package_path=args.package_path, username=args.username, token=args.token)
+#         # if result is None: sys.exit(1)
+#     else:
+#         print(f"Error: Unknown hub command '{args.hub_cmd}'", file=sys.stderr)
+#         sys.exit(1)
+
+# ... (rest of the handler functions)
+
+def handle_security_commands(args):
+    """Handle security subcommands."""
+    if args.security_cmd == "scan":
+        success = security_scan_mod.security_scan(
+            source_file=args.ir_file,
+            dest_file=args.output
+        )
+        if not success:
+             # The security_scan function returns True if no critical/high issues found.
+             # We might want to exit with 0 even if issues are found,
+             # but the function's docstring implies False means critical/high issues.
+             # Exit with 1 indicates a potential failure or critical findings.
+             print("Security scan completed with critical or high severity findings.", file=sys.stderr)
+             sys.exit(1)
         else:
-            # Default to showing both
-            list_my_shared_circuits(args.storage_path)
-            print("\n")
-            list_shared_with_me(args.storage_path)
-    elif args.sharing_cmd == "get":
-        get_shared_circuit_details(args.share_id, args.output_file, args.storage_path)
-    elif args.sharing_cmd == "permissions":
-        update_share_permissions(args.share_id, args.collaborator, args.permission, args.storage_path)
-    elif args.sharing_cmd == "remove-collaborator":
-        remove_collaborator(args.share_id, args.collaborator, args.storage_path)
-    elif args.sharing_cmd == "unshare":
-        unshare_circuit(args.share_id, args.storage_path)
-    elif args.sharing_cmd == "activity":
-        get_activity_history(args.share_id, args.storage_path)
-    elif args.sharing_cmd == "search":
-        search_shared_circuits(args.query, args.storage_path)
+            print("Security scan completed.") # Indicate completion even if low/medium issues found.
     else:
-        logger.error("Please specify a sharing command")
+        print(f"Error: Unknown security command '{args.security_cmd}'", file=sys.stderr)
         sys.exit(1)
-
-def handle_compare_commands(args):
-    """Handle circuit comparison commands."""
-    metrics = args.metrics.split(",") if args.metrics else None
-    compare_circuits(args.circuit1, args.circuit2, args.output_format, 
-                    args.output_file, args.detailed, metrics, args.visualize)
-
-def handle_hardware_commands(args):
-    """Handle hardware selection commands."""
-    providers = args.provider.split(",") if args.provider else None
-    find_compatible_hardware(args.circuit, args.criteria, providers, 
-                            args.min_qubits, args.max_cost, args.output_format,
-                            args.output_file, args.top, args.update_catalog)
-
-def handle_job_commands(args):
-    """Handle job management commands."""
-    if args.jobs_cmd == "list":
-        statuses = args.status.split(",") if args.status else None
-        list_jobs(statuses, args.provider, args.backend, args.days, args.storage_path)
-    elif args.jobs_cmd == "get":
-        get_job_details(args.job_id, args.storage_path)
-    elif args.jobs_cmd == "results":
-        get_job_results(args.job_id, args.output_file, args.output_format, args.storage_path)
-    elif args.jobs_cmd == "cancel":
-        cancel_job(args.job_id, args.storage_path)
-    elif args.jobs_cmd == "monitor":
-        statuses = args.status.split(",") if args.status else None
-        monitor_jobs(args.job_id, statuses, args.interval, args.storage_path)
-    else:
-        logger.error("Please specify a jobs command")
-        sys.exit(1)
-
-def handle_config_commands(args):
-    """Handle configuration commands."""
-    if args.config_cmd == "get":
-        value = get_config_value(args.path)
-        if value is not None:
-            print(value)
-        else:
-            print(f"Configuration value not found: {args.path}")
-            sys.exit(1)
-    elif args.config_cmd == "set":
-        # Convert string to appropriate type
-        value = args.value
-        if value.lower() == "true":
-            value = True
-        elif value.lower() == "false":
-            value = False
-        elif value.isdigit():
-            value = int(value)
-        elif value.replace(".", "", 1).isdigit():
-            value = float(value)
-            
-        if set_config_value(args.path, value):
-            print(f"Configuration value set: {args.path} = {value}")
-        else:
-            print(f"Failed to set configuration value: {args.path}")
-            sys.exit(1)
-    elif args.config_cmd == "print":
-        print_config()
-    elif args.config_cmd == "defaults":
-        print_default_params(args.command)
-    elif args.config_cmd == "profile":
-        if args.profile_cmd == "list":
-            profiles = list_profiles()
-            active = get_active_profile()
-            print("Available profiles:")
-            for profile in profiles:
-                if profile == active:
-                    print(f"* {profile} (active)")
-                else:
-                    print(f"  {profile}")
-        elif args.profile_cmd == "create":
-            if create_profile(args.name, args.description):
-                print(f"Profile created: {args.name}")
-            else:
-                print(f"Failed to create profile: {args.name}")
-                sys.exit(1)
-        elif args.profile_cmd == "load":
-            if load_profile(args.name):
-                print(f"Profile loaded: {args.name}")
-            else:
-                print(f"Failed to load profile: {args.name}")
-                sys.exit(1)
-        elif args.profile_cmd == "delete":
-            if delete_profile(args.name):
-                print(f"Profile deleted: {args.name}")
-            else:
-                print(f"Failed to delete profile: {args.name}")
-                sys.exit(1)
-        else:
-            logger.error("Please specify a profile command")
-            sys.exit(1)
-    elif args.config_cmd == "export":
-        if export_config(args.output_file):
-            print(f"Configuration exported to: {args.output_file}")
-        else:
-            print(f"Failed to export configuration")
-            sys.exit(1)
-    elif args.config_cmd == "import":
-        if import_config(args.input_file, args.overwrite):
-            print(f"Configuration imported from: {args.input_file}")
-        else:
-            print(f"Failed to import configuration")
-            sys.exit(1)
-    else:
-        logger.error("Please specify a configuration command")
-        sys.exit(1)
-
-def handle_dependency_commands(args):
-    """Handle dependency analysis commands."""
-    if args.deps_cmd == "check":
-        exit_code = check_dependencies(args.requirements)
-        sys.exit(exit_code)
-    elif args.deps_cmd == "report":
-        if save_dependency_report(args.output, args.format, args.requirements):
-            print(f"Dependency report saved to {args.output}")
-        else:
-            print("Failed to save dependency report")
-            sys.exit(1)
-    elif args.deps_cmd == "install-cmd":
-        install_cmd = get_install_command(args.requirements)
-        if install_cmd:
-            print(install_cmd)
-        else:
-            print("No missing packages found")
-    elif args.deps_cmd == "verify":
-        if verify_specific_package(args.package, args.version):
-            print(f"Package {args.package} OK")
-        else:
-            print(f"Package {args.package} verification failed")
-            sys.exit(1)
-    else:
-        logger.error("Please specify a dependency command")
-        sys.exit(1)
-
-def handle_init_commands(args):
-    """Handle init commands."""
-    if args.init_cmd == "list":
-        # Assuming init.list_templates() exists or is handled elsewhere
-        print("Listing templates... (Placeholder)") # Placeholder if list_templates was removed
-        # init.list_templates() # Uncomment if function exists
-    elif args.init_cmd == "create":
-        # Use the positional 'directory' argument for the project path
-        project_dir_to_use = args.directory
-        init.init_project(project_dir=project_dir_to_use, overwrite=args.overwrite)
-    else:
-        print("Use 'init list' to see available templates or 'init create <directory_name>' to create a new project.", file=sys.stderr)
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
