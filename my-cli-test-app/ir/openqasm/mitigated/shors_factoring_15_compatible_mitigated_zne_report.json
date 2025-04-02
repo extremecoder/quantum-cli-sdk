@@ -1,0 +1,11 @@
+{
+  "original_circuit": "my-cli-test-app/ir/openqasm/optimized/shors_factoring_15_compatible_optimized.qasm",
+  "mitigated_circuit": "my-cli-test-app/ir/openqasm/mitigated/shors_factoring_15_compatible_mitigated_zne.qasm",
+  "technique": "zne",
+  "parameters": {},
+  "notes": "Mitigation implemented via placeholder pass.",
+  "expected_improvement_placeholder": {
+    "error_reduction_estimate": "44.3%",
+    "fidelity_increase_estimate": "12.4%"
+  }
+}

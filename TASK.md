@@ -13,14 +13,15 @@
 5. [x] 2025-04-01: Implement `ir validate` command for IR verification (Aligned with pipeline)
 6. [x] 2025-04-01: Implement `security scan` for vulnerability checking (Aligned with pipeline)
 7. [x] 2025-04-01: Implement `run simulate` command with Qiskit backend (Aligned with pipeline, renamed --platform to --backend, added tests/docs)
-8. [ ] 2023-11-15: Add Cirq backend support to `run simulate` command
-9. [ ] 2023-11-20: Add Braket backend support to `run simulate` command
-10. [ ] 2023-11-30: Implement cross-platform compatibility testing
+8. [x] 2025-04-02: Add Cirq backend support to `run simulate` command (Note: QASM multi-bit measurement result aggregation needs improvement)
+9. [x] 2024-07-29: Add Braket backend support to `run simulate` command
+10. [x] 2023-11-30: Implement cross-platform compatibility testing (Added matrix strategy to e2e-pipeline.yml)
 
 ### Phase 2: Advanced Features
-11. [ ] 2023-12-05: Implement `ir optimize` command for circuit optimization (Aligned with pipeline)
-12. [ ] 2023-12-12: Implement `ir mitigate` command for error mitigation (Aligned with pipeline)
-13. [ ] 2023-12-18: Implement `test generate` command for test generation (Aligned with pipeline)
+11. [x] 2024-09-04: Implement `ir optimize` command for circuit optimization (Aligned with pipeline, L0/L1 implemented, L2/L3 placeholders)
+12. [x] 2024-09-04: Implement `ir mitigate` command for error mitigation (Aligned with pipeline, placeholders added)
+13. [ ] 2023-12-18: Implement `test generate` command for test generation (Aligned with pipeline)  
+Generate tests using llm such a way that it tests the generated ir code from every aspect w.r.t to quantum, Except or assume the mitigated ir file to be present at appropriate folder in the scaffolding, use the one we have 
 14. [ ] 2023-12-25: Implement `test run` command for running circuit tests (Aligned with pipeline)
 15. [ ] 2024-01-05: Implement `analyze resources` command for resource estimation (Aligned with pipeline)
 16. [ ] 2024-01-12: Implement `analyze cost` command for cost estimation (Aligned with pipeline)

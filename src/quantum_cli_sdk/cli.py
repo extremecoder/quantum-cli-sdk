@@ -22,6 +22,8 @@ from .commands import template
 from .commands import init
 from .commands import security_scan as security_scan_mod
 from .commands import simulate as simulate_mod
+from .commands.ir import optimize as ir_optimize_mod
+from .commands.ir import mitigate as ir_mitigate_mod
 # from .commands import hw_run
 # from .commands import estimate_resources
 # from .commands import mitigate
@@ -131,21 +133,25 @@ def setup_ir_commands(subparsers):
 
     # ir validate
     validate_parser = ir_subparsers.add_parser("validate", help="Validate IR file syntax and semantics")
-    validate_parser.add_argument("ir_file", help="Path to the IR file to validate")
+    validate_parser.add_argument("input_file", help="Path to the IR file to validate (e.g., .qasm)")
     validate_parser.add_argument("--output", help="Optional output file for validation results (JSON)")
     validate_parser.add_argument("--llm-url", help="Optional URL to LLM service for enhanced validation")
 
-    # ir optimize (placeholder)
-    # optimize_parser = ir_subparsers.add_parser("optimize", help="Optimize the quantum circuit IR (placeholder)")
-    # optimize_parser.add_argument("ir_file", help="Path to the input IR file")
-    # optimize_parser.add_argument("--output", required=True, help="Path to save the optimized IR file")
-    # Add optimization level/strategy flags later
+    # ir optimize
+    optimize_parser = ir_subparsers.add_parser("optimize", help="Optimize the quantum circuit IR")
+    optimize_parser.add_argument("--input-file", '-i', required=True, help="Path to the input OpenQASM file")
+    optimize_parser.add_argument("--output-file", '-o', default=None, help="Path to save the optimized OpenQASM file. Prints to stdout if not specified.")
+    optimize_parser.add_argument("--level", '-l', type=int, default=2, choices=[0, 1, 2, 3], help="Optimization level (0=None, 1=Light, 2=Medium, 3=Heavy)")
+    optimize_parser.add_argument("--target-depth", '-d', type=int, default=None, help="Target circuit depth (relevant for optimization level 3)")
+    optimize_parser.add_argument("--format", default='text', choices=['text', 'json'], help='Output format for statistics.')
 
-    # ir mitigate (placeholder)
-    # mitigate_parser = ir_subparsers.add_parser("mitigate", help="Apply error mitigation techniques to the IR (placeholder)")
-    # mitigate_parser.add_argument("ir_file", help="Path to the input IR file (usually optimized)")
-    # mitigate_parser.add_argument("--output", required=True, help="Path to save the mitigated IR file")
-    # Add mitigation technique flags later
+    # ir mitigate
+    mitigate_parser = ir_subparsers.add_parser("mitigate", help="Apply error mitigation techniques to the IR")
+    mitigate_parser.add_argument("--input-file", '-i', required=True, help="Path to the input OpenQASM file (usually optimized)")
+    mitigate_parser.add_argument("--output-file", '-o', required=True, help="Path to save the mitigated OpenQASM file")
+    mitigate_parser.add_argument("--technique", '-t', required=True, choices=ir_mitigate_mod.SUPPORTED_TECHNIQUES, help="Error mitigation technique to apply.")
+    mitigate_parser.add_argument("--params", '-p', default=None, help="JSON string containing technique-specific parameters (e.g., '{\"scale_factors\": [1, 2, 3]}')")
+    mitigate_parser.add_argument("--report", action='store_true', help="Generate a JSON report about the mitigation process.")
 
     # ir finetune (placeholder)
     # finetune_parser = ir_subparsers.add_parser("finetune", help="Fine-tune circuit based on analysis results (placeholder)")
@@ -718,28 +724,49 @@ def main():
             parser.print_help(sys.stderr)
             sys.exit(1)
 
+    # Explicitly exit with 0 for success
+    sys.exit(0)
+
 # --- Command Handler Functions ---
 
 def handle_ir_commands(args):
     """Handle ir subcommands."""
     if args.ir_cmd == "generate":
         # Pass LLM args to the generate_ir function
-        result = ir_generate_mod.generate_ir(
-            source=args.source, 
-            dest=args.dest, 
-            llm_provider=args.llm_provider, 
-            llm_model=args.llm_model
-        )
-        if result is None:
-             sys.exit(1) # Exit with error if generation failed
+        if hasattr(ir_generate_mod, 'generate_ir'):
+             success = ir_generate_mod.generate_ir(args.source, args.dest, args.llm_provider, args.llm_model)
+             sys.exit(0 if success else 1)
+        else:
+             logger.error("generate_ir function not found in the corresponding module. Cannot execute command.")
+             print("Error: Command implementation missing.", file=sys.stderr)
+             sys.exit(1)
     elif args.ir_cmd == "validate":
-        result = ir_validate_mod.validate_circuit(
-            source_file=args.ir_file,
-            dest_file=args.output,
-            llm_url=args.llm_url
-        )
-        if not result:
-            sys.exit(1) # Exit with error if validation failed
+        if hasattr(ir_validate_mod, 'validate_circuit'):
+             success = ir_validate_mod.validate_circuit(args.input_file, args.output, args.llm_url)
+             sys.exit(0 if success else 1)
+        else:
+             logger.error("validate_circuit function not found in the corresponding module. Cannot execute command.")
+             print("Error: Command implementation missing.", file=sys.stderr)
+             sys.exit(1)
+    elif args.ir_cmd == "optimize":
+        if hasattr(ir_optimize_mod, 'optimize_circuit_command'):
+            ir_optimize_mod.optimize_circuit_command(args)
+        else:
+             logger.error("optimize_circuit_command function not found. Cannot execute command.")
+             print("Error: Command implementation missing.", file=sys.stderr)
+             sys.exit(1)
+    elif args.ir_cmd == "mitigate":
+        # Call the refactored command function
+        if hasattr(ir_mitigate_mod, 'mitigate_circuit_command'):
+            ir_mitigate_mod.mitigate_circuit_command(args)
+            # The command function handles sys.exit internally
+        else:
+            logger.error("mitigate_circuit_command function not found. Cannot execute command.")
+            print("Error: Command implementation missing.", file=sys.stderr)
+            sys.exit(1)
+    elif args.ir_cmd == "finetune":
+        # Placeholder for finetune command
+        logger.warning("'ir finetune' command is not yet implemented.")
     else:
         print(f"Error: Unknown ir command '{args.ir_cmd}'", file=sys.stderr)
         sys.exit(1)
@@ -747,28 +774,19 @@ def handle_ir_commands(args):
 def handle_run_commands(args):
     """Handle run subcommands (simulate, hw)."""
     if args.run_cmd == "simulate":
-        results = simulate_mod.run_simulation(
+        # All logic including output handling and exit codes
+        # is now within the run_simulation function.
+        simulate_mod.run_simulation(
             source_file=args.qasm_file,
             backend=args.backend,
             output=args.output,
             shots=args.shots
             # Pass other kwargs if added later
         )
-        if results is None:
-            print("Simulation command failed.", file=sys.stderr)
-            sys.exit(1)
-        else:
-            # Output is handled within run_simulation if path provided
-            # Optionally print counts to stdout if no output file?
-            if args.output is None:
-                 print("Simulation Results:")
-                 print(json.dumps(results.get('counts', {}), indent=2))
-            print("Simulation command completed.")
-
+        # No further action needed here in the handler.
     # elif args.run_cmd == "hw":
     #     # Placeholder for hardware execution
     #     print("Hardware execution not yet implemented.")
-    #     sys.exit(1)
     else:
         print(f"Error: Unknown run command '{args.run_cmd}'", file=sys.stderr)
         sys.exit(1)
@@ -861,6 +879,8 @@ def handle_security_commands(args):
              sys.exit(1)
         else:
             print("Security scan completed.") # Indicate completion even if low/medium issues found.
+            # Explicitly exit with 0 on successful scan (no critical/high issues)
+            sys.exit(0)
     else:
         print(f"Error: Unknown security command '{args.security_cmd}'", file=sys.stderr)
         sys.exit(1)

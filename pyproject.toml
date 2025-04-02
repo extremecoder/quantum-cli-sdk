@@ -93,6 +93,21 @@ Documentation = "https://github.com/extremecoder/quantum-cli-sdk/wiki"
 Source = "https://github.com/extremecoder/quantum-cli-sdk"
 Tracker = "https://github.com/extremecoder/quantum-cli-sdk/issues"
 
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+python_files = "tests.py test_*.py *_test.py"
+python_classes = "Test*"
+python_functions = "test*"
+testpaths = [
+    "tests",
+]
+norecursedirs = [".*", "dist", "build", "venv", "src/quantum_cli_sdk/templates"]
+markers = [
+    "qasm3: mark test as related to QASM3 functionality",
+    "braket: mark test as related to AWS Braket backend"
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

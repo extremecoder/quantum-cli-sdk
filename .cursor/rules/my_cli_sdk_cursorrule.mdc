@@ -8,7 +8,7 @@ alwaysApply: true
 - **Check [TASK.md](mdc:TASK.md) or `TASK.md`** before starting a new task. If the task isn’t listed, add it with a brief description and today's date.
 - **Use consistent naming conventions, file structure, and architecture patterns** as described in [PLANNING.md](mdc:PLANNING.md) or `PLANNING.md`.
 - **Always create pyenv virtualenv if not exists** and switch to it while working in this project.
-- **Always create requirements.txt if not exists** and update the virtual environment by installing requirements.txt.
+- **Always create requirements.txt if not exists** and update the virtual environment by installing [requirements.txt](mdc:requirements.txt).
 - **Never install python package directly on the terminal** but firstly update requirements.txt file then pip install the requirements.txt
 
 
@@ -25,6 +25,8 @@ alwaysApply: true
     - 1 test for expected use
     - 1 edge case
     - 1 failure case
+- **Run the tests** and make sure it passes
+- **If task is about implementing cli command then do run the command** and make sure it works
 
 ### ✅ Task Completion
 - **Mark completed tasks in [TASK.md](mdc:TASK.md) or `TASK.md`** immediately after finishing them.

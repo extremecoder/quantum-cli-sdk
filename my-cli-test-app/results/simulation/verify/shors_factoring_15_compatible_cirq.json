@@ -1,0 +1,17 @@
+{
+  "platform": "cirq",
+  "shots": 100,
+  "counts": {
+    "1": 43,
+    "0": 57
+  },
+  "metadata": {
+    "measurement_keys": [
+      "reg_measure_0",
+      "reg_measure_1",
+      "reg_measure_2",
+      "reg_measure_3"
+    ],
+    "total_execution_time_sec": 0.5417380332946777
+  }
+}
