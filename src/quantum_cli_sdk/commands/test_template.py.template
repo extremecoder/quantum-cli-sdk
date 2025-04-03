@@ -1,0 +1,145 @@
+import pytest
+import logging
+from pathlib import Path
+from qiskit import QuantumCircuit, transpile
+from qiskit.providers.aer import AerSimulator  # Updated import
+
+logger = logging.getLogger(__name__)
+
+# Determine the path to the QASM file relative to this test file.
+# Assumes the test file is in 'tests/generated/' and QASM in 'ir/openqasm/mitigated/'
+TEST_DIR = Path(__file__).parent
+ROOT_DIR = TEST_DIR.parent.parent
+# Construct the expected QASM file path based on the test filename
+# NOTE: This placeholder filename will need adjustment if multiple tests are generated
+#       or if the naming convention changes. Consider passing the actual QASM filename
+#       into the test generation context if needed.
+QASM_FILENAME = Path(__file__).stem.replace('test_', '') + ".qasm"
+QASM_FILE_PATH = ROOT_DIR / "ir" / "openqasm" / "mitigated" / QASM_FILENAME
+
+@pytest.fixture(scope="module")
+def circuit():
+    '''Load the quantum circuit from the corresponding QASM file.'''
+    if not QASM_FILE_PATH.is_file():
+        pytest.fail(f"Could not find the expected QASM file: {QASM_FILE_PATH}\\n"
+                    f"Ensure the QASM file exists in the 'ir/openqasm/mitigated/' directory "
+                    f"and corresponds to this test file ({Path(__file__).name}).")
+    try:
+        qc = QuantumCircuit.from_qasm_file(str(QASM_FILE_PATH))
+        logger.info(f"Successfully loaded circuit from {QASM_FILE_PATH}")
+        return qc
+    except Exception as e:
+        pytest.fail(f"Failed to load QASM circuit '{QASM_FILE_PATH}': {e}")
+
+@pytest.fixture(scope="module")
+def simulator():
+    '''Provides a Qiskit Aer simulator.'''
+    # Use AerSimulator which is the recommended backend
+    return AerSimulator()
+
+def test_circuit_structure(circuit: QuantumCircuit):
+    '''Test basic properties of the circuit structure.'''
+    # --- TODO: Replace with actual expected values based on the input QASM ---
+    # These values are placeholders and MUST be updated for the specific circuit.
+    expected_qubits = 2  # Example: Update this based on QASM_FILENAME
+    expected_clbits = 2  # Example: Update this based on QASM_FILENAME
+    expected_depth = 3   # Example: Update this based on QASM_FILENAME
+    expected_ops = {'h': 1, 'cx': 1, 'measure': 2} # Example: Update this based on QASM_FILENAME
+    # --- End of TODO ---
+
+    logger.info(f"Running structure checks for {QASM_FILENAME}...")
+    logger.info(f"Actual qubits: {circuit.num_qubits}, clbits: {circuit.num_clbits}")
+    logger.info(f"Actual depth: {circuit.depth()}, ops: {dict(circuit.count_ops())}")
+
+    assert circuit.num_qubits == expected_qubits, f"Expected {expected_qubits} qubits, found {circuit.num_qubits}"
+    assert circuit.num_clbits == expected_clbits, f"Expected {expected_clbits} classical bits, found {circuit.num_clbits}"
+    # Note: Depth and op counts can be sensitive to Qiskit versions and transpilation.
+    # Consider adding tolerances or focusing on presence/absence of key gates if exact counts are fragile.
+    # You might uncomment and adjust these assertions based on the specific circuit's expected properties.
+    # assert circuit.depth() == expected_depth, f"Expected depth {expected_depth}, found {circuit.depth()}"
+    # assert dict(circuit.count_ops()) == expected_ops, f"Operation counts mismatch. Expected {expected_ops}, got {dict(circuit.count_ops())}"
+
+    logger.info("Circuit structure test passed (Ensure TODO values are updated for the specific circuit).")
+
+
+def test_simulation_basic(circuit: QuantumCircuit, simulator: AerSimulator):
+    '''Test simulation results for a basic input state (e.g., |0...0>).'''
+    # --- TODO: Define expected results based on the specific circuit's logic ---
+    # This example is for a Bell state (|00> + |11>)/sqrt(2) from H(0) CX(0,1) Measure
+    # It MUST be updated based on the actual QASM_FILENAME circuit.
+    expected_counts = {'00': 512, '11': 512} # Counts for 1024 shots
+    tolerance = 50 # Allow some statistical noise (+/- 5% of total shots)
+    # --- End of TODO ---
+
+    shots = 1024
+    logger.info(f"Running basic simulation for {QASM_FILENAME} with {shots} shots...")
+
+    # Ensure measurements are present if needed by the simulator backend
+    # Qiskit Aer typically handles this, but explicit is safer.
+    circuit_to_run = circuit.copy() # Work on a copy to avoid modifying the fixture
+    if circuit_to_run.num_clbits == 0:
+        logger.warning(f"Circuit {QASM_FILENAME} has no classical bits. Adding measurements to all qubits for simulation.")
+        circuit_to_run.measure_all(inplace=True)
+    elif circuit_to_run.num_clbits != circuit_to_run.num_qubits:
+         logger.warning(f"Circuit {QASM_FILENAME} has {circuit_to_run.num_qubits} qubits but {circuit_to_run.num_clbits} classical bits. Measurements might be partial.")
+
+
+    # Transpilation might be needed if the circuit contains gates not native to the simulator
+    # For basic tests, often optional, but good practice for complex circuits.
+    # try:
+    #     transpiled_circuit = transpile(circuit_to_run, simulator)
+    #     logger.info(f"Transpiled circuit for simulation: {dict(transpiled_circuit.count_ops())}")
+    # except Exception as e:
+    #     pytest.fail(f"Failed to transpile circuit {QASM_FILENAME}: {e}")
+    # circuit_to_run = transpiled_circuit # Use transpiled circuit if enabled
+
+    try:
+        # Run the simulation
+        job = simulator.run(circuit_to_run, shots=shots)
+        result = job.result()
+        counts = result.get_counts(circuit_to_run)
+        logger.info(f"Simulation successful. Counts: {counts}")
+    except Exception as e:
+         pytest.fail(f"Simulation failed for circuit {QASM_FILENAME}: {e}")
+
+
+    # --- Assertions: Compare simulation results to expected outcomes ---
+    # These assertions MUST be updated based on the 'expected_counts' defined above for the specific circuit.
+
+    # 1. Check if all expected states are present
+    for state in expected_counts:
+        assert state in counts, f"Expected state '{state}' not found in simulation results: {list(counts.keys())}"
+
+    # 2. Check if unexpected states are absent or have very low probability (optional, depends on circuit)
+    allowed_states = set(expected_counts.keys())
+    for state in counts:
+        if state not in allowed_states:
+            # This might be acceptable if noise is expected or counts are low. Adjust assertion as needed.
+            logger.warning(f"Unexpected state '{state}' found with count {counts[state]}. Consider adding to expected_counts or refining the test/circuit if this is erroneous.")
+            # Example: Fail if unexpected states have significant counts (e.g., > 1% of shots)
+            # assert counts[state] < shots * 0.01, f"Unexpected state '{state}' has significant count {counts[state]}"
+
+    # 3. Check counts/probabilities against expected values within tolerance
+    total_shots_observed = sum(counts.values())
+    if total_shots_observed != shots:
+         # This could indicate simulator issues, but usually fine if difference is small.
+         logger.warning(f"Observed {total_shots_observed} total shots, but expected {shots}.")
+         # Adjust tolerance or investigate if this discrepancy is significant for your use case.
+
+    for state, expected_count in expected_counts.items():
+        observed_count = counts.get(state, 0)
+        # Use pytest.approx for comparing floating point probabilities, or adjust tolerance for counts.
+        # assert observed_count == pytest.approx(expected_count, abs=tolerance)
+        assert abs(observed_count - expected_count) <= tolerance, \\
+            f"Count for state '{state}' ({observed_count}) differs from expected ({expected_count}) by more than tolerance ({tolerance})"
+
+    logger.info("Basic simulation test passed (Ensure TODO values and assertions are updated for the specific circuit).")
+
+# --- TODO: Add more tests as needed ---
+# Consider adding tests for:
+# - Different initial states if relevant (e.g., using `circuit.initialize([...])` in a test function).
+# - Specific circuit logic or known properties (e.g., testing entanglement creation, verifying specific gate sequences work as intended).
+# - Edge cases identified during analysis or from the mitigation steps applied to the original circuit.
+# - Comparison against known analytical results if the circuit is simple enough.
+# - Parameterized tests if the circuit has variations (using @pytest.mark.parametrize).
+# ----------------------------------------- 

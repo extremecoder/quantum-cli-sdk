@@ -124,7 +124,7 @@ class ConfigManager:
             # Update configuration with loaded data
             self._update_config(config_data)
             self._config_file = config_file
-            logger.info(f"Loaded configuration from {config_file}")
+            # logger.info(f"Loaded configuration from {config_file}")
             
             # Set active profile
             self._set_active_profile()

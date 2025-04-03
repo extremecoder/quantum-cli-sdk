@@ -53,7 +53,7 @@ class ConfigManager:
             if os.path.exists(self.config_path):
                 with open(self.config_path, 'r') as f:
                     config = json.load(f)
-                logger.info(f"Loaded configuration from {self.config_path}")
+                # logger.info(f"Loaded configuration from {self.config_path}")
                 return config
             else:
                 return {}

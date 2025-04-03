@@ -24,6 +24,7 @@ from .commands import security_scan as security_scan_mod
 from .commands import simulate as simulate_mod
 from .commands.ir import optimize as ir_optimize_mod
 from .commands.ir import mitigate as ir_mitigate_mod
+from .commands import generate_tests as test_generate_mod
 # from .commands import hw_run
 # from .commands import estimate_resources
 # from .commands import mitigate
@@ -208,14 +209,16 @@ def setup_analyze_commands(subparsers):
 def setup_test_commands(subparsers):
     """Setup commands for testing quantum circuits."""
     test_parser = subparsers.add_parser("test", help="Generate and run tests for quantum circuits")
-    test_subparsers = test_parser.add_subparsers(dest="test_cmd", help="Test command")
+    test_subparsers = test_parser.add_subparsers(dest="test_cmd", help="Test command", required=True)
 
-    # test generate (placeholder)
-    # generate_parser = test_subparsers.add_parser("generate", help="Generate test code from an IR file")
-    # generate_parser.add_argument("ir_file", help="Path to the input IR file (usually mitigated)")
-    # generate_parser.add_argument("--output", required=True, help="Path to save the generated Python test file")
+    # test generate
+    generate_parser = test_subparsers.add_parser("generate", help="Generate test code from an IR file using LLM")
+    generate_parser.add_argument("--input-file", "-i", required=True, help="Path to the input mitigated IR file (e.g., .qasm)")
+    generate_parser.add_argument("--output-dir", "-o", default="tests/generated", help="Directory to save the generated Python test files (default: tests/generated)")
+    generate_parser.add_argument("--llm-provider", help="LLM provider to use for test generation (e.g., 'openai', 'togetherai')")
+    generate_parser.add_argument("--llm-model", help="Specific LLM model name (requires --llm-provider)")
 
-    # test run (placeholder)
+    # test run (placeholder - keep commented for now)
     # run_parser = test_subparsers.add_parser("run", help="Run generated test file(s)")
     # run_parser.add_argument("test_file", help="Path to the generated test file (or directory)")
     # run_parser.add_argument("--output", required=True, help="Path to save test results (JSON)")
@@ -615,7 +618,7 @@ def main():
     setup_ir_commands(subparsers)
     setup_run_commands(subparsers)      # Includes simulate
     setup_analyze_commands(subparsers)  # Placeholders commented
-    setup_test_commands(subparsers)     # Placeholders commented
+    setup_test_commands(subparsers)     # Uncommented
     setup_service_commands(subparsers)  # Placeholders commented
     setup_package_commands(subparsers)  # Placeholders commented
     setup_hub_commands(subparsers)      # Placeholders commented
@@ -671,10 +674,7 @@ def main():
         parser.print_help(sys.stderr)
         sys.exit(1)
     elif args.command == "test":
-        # handle_test_commands(args) # Commented out
-        print(f"Command group '{args.command}' is not fully implemented yet.", file=sys.stderr)
-        parser.print_help(sys.stderr)
-        sys.exit(1)
+        handle_test_commands(args) # Uncommented
     elif args.command == "service":
         # handle_service_commands(args) # Commented out
         print(f"Command group '{args.command}' is not fully implemented yet.", file=sys.stderr)
@@ -774,113 +774,58 @@ def handle_ir_commands(args):
 def handle_run_commands(args):
     """Handle run subcommands (simulate, hw)."""
     if args.run_cmd == "simulate":
-        # All logic including output handling and exit codes
-        # is now within the run_simulation function.
-        simulate_mod.run_simulation(
-            source_file=args.qasm_file,
-            backend=args.backend,
-            output=args.output,
-            shots=args.shots
-            # Pass other kwargs if added later
-        )
-        # No further action needed here in the handler.
-    # elif args.run_cmd == "hw":
-    #     # Placeholder for hardware execution
-    #     print("Hardware execution not yet implemented.")
+        # Check if the simulate function exists in the module
+        if hasattr(simulate_mod, 'simulate_circuit'):
+            # Pass all relevant arguments
+            success = simulate_mod.simulate_circuit(
+                qasm_file=args.qasm_file,
+                backend_name=args.backend,
+                output_file=args.output,
+                num_shots=args.shots
+            )
+            sys.exit(0 if success else 1)
+        else:
+            logger.error("simulate_circuit function not found in simulate_mod. Cannot execute command.")
+            print("Error: Command implementation missing.", file=sys.stderr)
+            sys.exit(1)
+    # Add handlers for other run commands (e.g., run hw) when implemented
     else:
         print(f"Error: Unknown run command '{args.run_cmd}'", file=sys.stderr)
+        # Consider finding the parent parser to print help for the 'run' command
+        # parser.print_help(sys.stderr) # This prints help for the main command
         sys.exit(1)
 
-# def handle_analyze_commands(args): # Commented out
-#     """Handle analyze subcommands."""
-#     if args.analyze_cmd == "resources":
-#         print(f"Placeholder: Analyzing resources for {args.ir_file} to {args.output}")
-#         # result = analyze_resources_mod.estimate_resources(ir_file=args.ir_file, output=args.output)
-#         # if result is None: sys.exit(1)
-#     elif args.analyze_cmd == "cost":
-#         print(f"Placeholder: Analyzing cost for {args.ir_file} to {args.output}")
-#         # result = analyze_cost_mod.estimate_cost(ir_file=args.ir_file, resource_file=args.resource_file, output=args.output)
-#         # if result is None: sys.exit(1)
-#     elif args.analyze_cmd == "benchmark":
-#         print(f"Placeholder: Benchmarking {args.ir_file} to {args.output}")
-#         # result = analyze_benchmark_mod.benchmark_circuit(ir_file=args.ir_file, output=args.output)
-#         # if result is None: sys.exit(1)
-#     else:
-#         print(f"Error: Unknown analyze command '{args.analyze_cmd}'", file=sys.stderr)
-#         sys.exit(1)
-
-# def handle_test_commands(args): # Commented out
-#     """Handle test subcommands."""
-#     if args.test_cmd == "generate":
-#         print(f"Placeholder: Generating tests for {args.ir_file} to {args.output}")
-#         # result = test_mod.generate_tests(ir_file=args.ir_file, output=args.output)
-#         # if result is None: sys.exit(1)
-#     elif args.test_cmd == "run":
-#         print(f"Placeholder: Running tests in {args.test_file}, saving results to {args.output}")
-#         # result = test_mod.run_tests(test_file=args.test_file, output=args.output)
-#         # if result is None: sys.exit(1)
-#     else:
-#         print(f"Error: Unknown test command '{args.test_cmd}'", file=sys.stderr)
-#         sys.exit(1)
-
-# def handle_service_commands(args): # Commented out
-#     """Handle service subcommands."""
-#     if args.service_cmd == "generate":
-#         print(f"Placeholder: Generating service for {args.ir_file} in {args.output_dir}")
-#         # result = service_mod.generate_service(ir_file=args.ir_file, output_dir=args.output_dir)
-#         # if result is None: sys.exit(1)
-#     elif args.service_cmd == "test-generate":
-#         print(f"Placeholder: Generating service tests for {args.service_dir} in {args.output}")
-#         # result = service_mod.generate_service_tests(service_dir=args.service_dir, output=args.output)
-#         # if result is None: sys.exit(1)
-#     elif args.service_cmd == "test-run":
-#         print(f"Placeholder: Running service tests in {args.test_dir} for {args.service_dir}, saving results to {args.output}")
-#         # result = service_mod.run_service_tests(service_dir=args.service_dir, test_dir=args.test_dir, output=args.output)
-#         # if result is None: sys.exit(1)
-#     else:
-#         print(f"Error: Unknown service command '{args.service_cmd}'", file=sys.stderr)
-#         sys.exit(1)
-
-# def handle_package_commands(args): # Commented out
-#     """Handle package subcommands."""
-#     if args.package_cmd == "create":
-#         print(f"Placeholder: Creating package from {args.source_dir} and {args.circuit_file} to {args.output_path}")
-#         # result = package_mod.create_package(source_dir=args.source_dir, circuit_file=args.circuit_file, metadata_file=args.metadata_file, output_path=args.output_path)
-#         # if result is None: sys.exit(1)
-#     else:
-#         print(f"Error: Unknown package command '{args.package_cmd}'", file=sys.stderr)
-#         sys.exit(1)
-
-# def handle_hub_commands(args): # Commented out
-#     """Handle hub subcommands."""
-#     if args.hub_cmd == "publish":
-#         print(f"Placeholder: Publishing package {args.package_path} to Hub...")
-#         # result = hub_mod.publish_package(package_path=args.package_path, username=args.username, token=args.token)
-#         # if result is None: sys.exit(1)
-#     else:
-#         print(f"Error: Unknown hub command '{args.hub_cmd}'", file=sys.stderr)
-#         sys.exit(1)
-
-# ... (rest of the handler functions)
+def handle_test_commands(args):
+    """Handle test subcommands."""
+    if args.test_cmd == "generate":
+        if hasattr(test_generate_mod, 'generate_tests'):
+            success = test_generate_mod.generate_tests(
+                input_file=args.input_file,
+                output_dir=args.output_dir,
+                llm_provider=args.llm_provider,
+                llm_model=args.llm_model
+            )
+            sys.exit(0 if success else 1)
+        else:
+            logger.error("generate_tests function not found in test_generate_mod. Cannot execute command.")
+            print("Error: Command implementation missing.", file=sys.stderr)
+            sys.exit(1)
+    # Add handlers for other test commands (e.g., test run) when implemented
+    else:
+        print(f"Error: Unknown test command '{args.test_cmd}'", file=sys.stderr)
+        # Consider finding the parent parser to print help for the 'test' command
+        sys.exit(1)
 
 def handle_security_commands(args):
     """Handle security subcommands."""
     if args.security_cmd == "scan":
-        success = security_scan_mod.security_scan(
-            source_file=args.ir_file,
-            dest_file=args.output
-        )
-        if not success:
-             # The security_scan function returns True if no critical/high issues found.
-             # We might want to exit with 0 even if issues are found,
-             # but the function's docstring implies False means critical/high issues.
-             # Exit with 1 indicates a potential failure or critical findings.
-             print("Security scan completed with critical or high severity findings.", file=sys.stderr)
-             sys.exit(1)
+        if hasattr(security_scan_mod, 'scan_ir'):
+            success = security_scan_mod.scan_ir(args.ir_file, args.output)
+            sys.exit(0 if success else 1)
         else:
-            print("Security scan completed.") # Indicate completion even if low/medium issues found.
-            # Explicitly exit with 0 on successful scan (no critical/high issues)
-            sys.exit(0)
+            logger.error("scan_ir function not found in security_scan_mod. Cannot execute command.")
+            print("Error: Command implementation missing.", file=sys.stderr)
+            sys.exit(1)
     else:
         print(f"Error: Unknown security command '{args.security_cmd}'", file=sys.stderr)
         sys.exit(1)

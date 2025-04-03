@@ -21,7 +21,7 @@
 11. [x] 2024-09-04: Implement `ir optimize` command for circuit optimization (Aligned with pipeline, L0/L1 implemented, L2/L3 placeholders)
 12. [x] 2024-09-04: Implement `ir mitigate` command for error mitigation (Aligned with pipeline, placeholders added)
 13. [ ] 2023-12-18: Implement `test generate` command for test generation (Aligned with pipeline)  
-Generate tests using llm such a way that it tests the generated ir code from every aspect w.r.t to quantum, Except or assume the mitigated ir file to be present at appropriate folder in the scaffolding, use the one we have 
+Generate tests using llm such a way that it tests the generated ir code from every aspect w.r.t to quantum, Expect or assume the mitigated ir file to be present at appropriate folder in the scaffolding and place the generated files under tests/generated under scaffolding root folder, to test the cli use the scaffolding we have created as an example my-cli-test-app and my-cli-test-app/ir/openqasm/mitigated/shors_factoring_15_compatible_mitigated_zne.qasm as the mitigated source file
 14. [ ] 2023-12-25: Implement `test run` command for running circuit tests (Aligned with pipeline)
 15. [ ] 2024-01-05: Implement `analyze resources` command for resource estimation (Aligned with pipeline)
 16. [ ] 2024-01-12: Implement `analyze cost` command for cost estimation (Aligned with pipeline)
