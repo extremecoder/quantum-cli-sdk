@@ -1,0 +1,30 @@
+{
+  "circuit": {
+    "name": "shors_factoring_15_compatible",
+    "qubits": 8,
+    "depth": 13,
+    "gates": {
+      "total": 27,
+      "single_qubit": 9,
+      "two_qubit": 14,
+      "by_type": {
+        "h": 8,
+        "cx": 6,
+        "cz": 6,
+        "measure": 4,
+        "swap": 2,
+        "x": 1
+      }
+    }
+  },
+  "execution": {
+    "backend": "qiskit_aer",
+    "shots": 1000,
+    "time_seconds": 0.5686798095703125
+  },
+  "metrics": {
+    "success": true,
+    "transpiled_depth": 11,
+    "transpiled_gates": 22
+  }
+}

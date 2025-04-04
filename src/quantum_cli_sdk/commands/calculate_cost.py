@@ -136,7 +136,8 @@ def calculate_cost(source="openqasm", platform="all", shots=1000, dest="results/
         if comparison:
             print(f"\nCheapest option: {comparison['cheapest']['platform'].upper()} (${comparison['cheapest']['total_cost']:.2f})")
             print(f"Most expensive option: {comparison['most_expensive']['platform'].upper()} (${comparison['most_expensive']['total_cost']:.2f})")
-            print(f"Potential savings: ${comparison['savings_vs_expensive']:.2f}")
+            if 'savings_vs_expensive' in comparison['cheapest']:
+                print(f"Potential savings: ${comparison['cheapest']['savings_vs_expensive']:.2f}")
         print("=" * 50)
         
         return results

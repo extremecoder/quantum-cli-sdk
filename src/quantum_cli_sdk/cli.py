@@ -25,10 +25,12 @@ from .commands import simulate as simulate_mod
 from .commands.ir import optimize as ir_optimize_mod
 from .commands.ir import mitigate as ir_mitigate_mod
 from .commands import generate_tests as test_generate_mod
+from .commands import estimate_resources as analyze_resources_mod
+from .commands import calculate_cost
+from .commands import benchmark as analyze_benchmark_mod
+from .commands import finetune as ir_finetune_mod
 # from .commands import hw_run
-# from .commands import estimate_resources
 # from .commands import mitigate
-# from .commands import calculate_cost
 # from .commands import optimize as ir_optimize_mod
 # from .commands import mitigate as ir_mitigate_mod
 # from .commands import finetune as ir_finetune_mod
@@ -155,11 +157,12 @@ def setup_ir_commands(subparsers):
     mitigate_parser.add_argument("--report", action='store_true', help="Generate a JSON report about the mitigation process.")
 
     # ir finetune (placeholder)
-    # finetune_parser = ir_subparsers.add_parser("finetune", help="Fine-tune circuit based on analysis results (placeholder)")
-    # finetune_parser.add_argument("ir_file", help="Path to the input IR file (usually mitigated)")
-    # finetune_parser.add_argument("--cost-file", help="Path to cost estimation results")
-    # finetune_parser.add_argument("--benchmark-file", help="Path to benchmark results")
-    # finetune_parser.add_argument("--output", required=True, help="Path to save fine-tuning results (JSON)")
+    finetune_parser = ir_subparsers.add_parser("finetune", help="Fine-tune circuit based on analysis results and hardware constraints")
+    finetune_parser.add_argument("--input-file", '-i', required=True, help="Path to the input IR file (usually mitigated)")
+    finetune_parser.add_argument("--output-file", '-o', required=True, help="Path to save fine-tuning results (JSON)")
+    finetune_parser.add_argument("--hardware", choices=["ibm", "aws", "google"], default="ibm", help="Target hardware platform for fine-tuning")
+    finetune_parser.add_argument("--search", choices=["grid", "random"], default="random", help="Search method for hyperparameter optimization")
+    finetune_parser.add_argument("--shots", type=int, default=1000, help="Number of shots for simulation during fine-tuning")
 
 def setup_run_commands(subparsers):
     """Setup commands for running circuits (simulation, hardware)."""
@@ -186,25 +189,30 @@ def setup_run_commands(subparsers):
 def setup_analyze_commands(subparsers):
     """Setup commands for circuit analysis."""
     analyze_parser = subparsers.add_parser("analyze", help="Analyze quantum circuit properties")
-    analyze_subparsers = analyze_parser.add_subparsers(dest="analyze_cmd", help="Analysis command")
+    analyze_subparsers = analyze_parser.add_subparsers(dest="analyze_cmd", help="Analysis command", required=True)
 
-    # analyze resources (placeholder)
-    # resources_parser = analyze_subparsers.add_parser("resources", help="Estimate resource requirements (qubits, gates)")
-    # resources_parser.add_argument("ir_file", help="Path to the input IR file")
-    # resources_parser.add_argument("--output", required=True, help="Path to save resource estimation results (JSON)")
+    # analyze resources
+    resources_parser = analyze_subparsers.add_parser("resources", help="Estimate resource requirements (qubits, gates)")
+    resources_parser.add_argument("ir_file", help="Path to the input IR file (OpenQASM)")
+    resources_parser.add_argument("--output", help="Path to save resource estimation results (JSON)")
+    resources_parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
 
-    # analyze cost (placeholder)
-    # cost_parser = analyze_subparsers.add_parser("cost", help="Estimate execution cost on different platforms")
-    # cost_parser.add_argument("ir_file", help="Path to the input IR file")
-    # cost_parser.add_argument("--resource-file", help="Path to resource estimation file (optional input)") # Added optional input
-    # cost_parser.add_argument("--output", required=True, help="Path to save cost estimation results (JSON)")
-    # Add platform/provider flags later
+    # analyze cost 
+    cost_parser = analyze_subparsers.add_parser("cost", help="Estimate execution cost on different platforms")
+    cost_parser.add_argument("ir_file", help="Path to the input IR file")
+    cost_parser.add_argument("--resource-file", help="Path to resource estimation file (optional input)")
+    cost_parser.add_argument("--output", help="Path to save cost estimation results (JSON)")
+    cost_parser.add_argument("--platform", choices=["all", "ibm", "aws", "google"], default="all", 
+                           help="Target platform for cost estimation")
+    cost_parser.add_argument("--shots", type=int, default=1000, help="Number of shots for execution")
+    cost_parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
 
     # analyze benchmark (placeholder)
-    # benchmark_parser = analyze_subparsers.add_parser("benchmark", help="Benchmark circuit performance")
-    # benchmark_parser.add_argument("ir_file", help="Path to the input IR file")
-    # benchmark_parser.add_argument("--output", required=True, help="Path to save benchmark results (JSON)")
-    # Add comparison flags later
+    benchmark_parser = analyze_subparsers.add_parser("benchmark", help="Benchmark circuit performance")
+    benchmark_parser.add_argument("ir_file", help="Path to the input IR file")
+    benchmark_parser.add_argument("--output", required=True, help="Path to save benchmark results (JSON)")
+    benchmark_parser.add_argument("--shots", type=int, default=1000, help="Number of shots for simulation")
+    benchmark_parser.set_defaults(func=lambda args: analyze_benchmark_mod.benchmark(args.ir_file, args.output))
 
 def setup_test_commands(subparsers):
     """Setup commands for testing quantum circuits."""
@@ -669,12 +677,9 @@ def main():
     elif args.command == "run":
         handle_run_commands(args)
     elif args.command == "analyze":
-        # handle_analyze_commands(args) # Commented out
-        print(f"Command group '{args.command}' is not fully implemented yet.", file=sys.stderr)
-        parser.print_help(sys.stderr)
-        sys.exit(1)
+        handle_analyze_commands(args)
     elif args.command == "test":
-        handle_test_commands(args) # Uncommented
+        handle_test_commands(args)
     elif args.command == "service":
         # handle_service_commands(args) # Commented out
         print(f"Command group '{args.command}' is not fully implemented yet.", file=sys.stderr)
@@ -765,8 +770,20 @@ def handle_ir_commands(args):
             print("Error: Command implementation missing.", file=sys.stderr)
             sys.exit(1)
     elif args.ir_cmd == "finetune":
-        # Placeholder for finetune command
-        logger.warning("'ir finetune' command is not yet implemented.")
+        # Call the finetune command function
+        if hasattr(ir_finetune_mod, 'finetune_circuit'):
+            success = ir_finetune_mod.finetune_circuit(
+                input_file=args.input_file,
+                output_file=args.output_file,
+                hardware=args.hardware,
+                search_method=args.search,
+                shots=args.shots
+            )
+            sys.exit(0 if success else 1)
+        else:
+            logger.error("finetune_circuit function not found in ir_finetune_mod. Cannot execute command.")
+            print("Error: Command implementation missing.", file=sys.stderr)
+            sys.exit(1)
     else:
         print(f"Error: Unknown ir command '{args.ir_cmd}'", file=sys.stderr)
         sys.exit(1)
@@ -828,6 +845,62 @@ def handle_security_commands(args):
             sys.exit(1)
     else:
         print(f"Error: Unknown security command '{args.security_cmd}'", file=sys.stderr)
+        sys.exit(1)
+
+def handle_analyze_commands(args):
+    """Handle circuit analysis commands."""
+    if args.analyze_cmd == "resources":
+        if not args.output:
+            # Default output path if not specified
+            args.output = f"results/resource_estimation/{Path(args.ir_file).stem}_resources.json"
+        
+        results = analyze_resources_mod.estimate_resources(args.ir_file, args.output)
+        
+        if results and args.format == "text":
+            # Display a text summary of the results
+            print("\nResource Estimation Summary:")
+            print("=" * 50)
+            print(f"Circuit: {results['circuit_name']}")
+            print(f"Qubits: {results['qubit_count']}")
+            print(f"Total gates: {results['gate_counts']['total']}")
+            print(f"Circuit depth: {results['circuit_depth']}")
+            print(f"T-depth: {results['t_depth']}")
+            print("\nGate breakdown:")
+            for gate, count in results['gate_counts'].items():
+                if gate != "total":
+                    print(f"  {gate}: {count}")
+            print("\nEstimated runtime:")
+            for platform, time in results['estimated_runtime'].items():
+                print(f"  {platform}: {time}")
+            print(f"Estimated error probability: {results['error_probability_estimate']}")
+            print("=" * 50)
+    elif args.analyze_cmd == "cost":
+        if not args.output:
+            # Default output path if not specified
+            args.output = f"results/cost_estimation/{Path(args.ir_file).stem}_cost.json"
+        
+        # Import the cost calculation module
+        from quantum_cli_sdk.commands import calculate_cost
+        
+        # Call the cost calculation function
+        results = calculate_cost.calculate_cost(
+            source=args.ir_file,
+            platform=args.platform,
+            shots=args.shots,
+            dest=args.output
+        )
+        
+        # The display is already handled in calculate_cost.py
+    elif args.analyze_cmd == "benchmark":
+        if not args.output:
+            # Default output path if not specified
+            args.output = f"results/benchmark/{Path(args.ir_file).stem}_benchmark.json"
+        
+        # Call the benchmark function
+        success = analyze_benchmark_mod.benchmark(args.ir_file, args.output)
+        sys.exit(0 if success else 1)
+    else:
+        print(f"Command 'analyze {args.analyze_cmd}' is not implemented yet.", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":

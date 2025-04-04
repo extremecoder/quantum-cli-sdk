@@ -188,71 +188,90 @@ def run_benchmark(source_path, shots=1000, circuit_file=None):
     try:
         # Import required modules
         try:
-            from qiskit import QuantumCircuit, Aer, execute, transpile
+            import qiskit
+            from qiskit import QuantumCircuit, transpile
             from qiskit.converters import circuit_to_dag
+            from qiskit_aer import Aer
+            from qiskit_aer import AerSimulator
             import time
-        except ImportError:
-            logger.error("Qiskit not installed, required for benchmarking")
+        except ImportError as e:
+            logger.error(f"Qiskit import error: {e}")
             return None
         
         # Load circuit from file
         with open(circuit_file, 'r') as f:
             qasm = f.read()
-            
-        circuit = QuantumCircuit.from_qasm_str(qasm)
         
-        # Measure circuit characteristics
-        dag = circuit_to_dag(circuit)
-        depth = dag.depth()
-        width = dag.width()
-        
-        # Count gates by type
-        gate_counts = {}
-        for node in dag.op_nodes():
-            op_name = node.name
-            if op_name not in gate_counts:
-                gate_counts[op_name] = 0
-            gate_counts[op_name] += 1
+        # Create circuit from QASM
+        try:
+            circuit = QuantumCircuit.from_qasm_str(qasm)
+        except Exception as e:
+            logger.error(f"Error loading QASM circuit: {e}")
+            return None
             
-        # Ensure measurements exist
-        if not circuit.clbits:
-            circuit.measure_all()
-            
-        # Run simulation and time it
-        simulator = Aer.get_backend('qasm_simulator')
+        # Get circuit metrics
+        num_qubits = circuit.num_qubits
+        depth = circuit.depth()
+        num_gates = sum(circuit.count_ops().values())
         
+        # Count by gate type
+        gate_counts = circuit.count_ops()
+        
+        # Calculate single qubit and two qubit gates
+        single_qubit_gates = sum(count for gate, count in gate_counts.items() 
+                               if gate in ['h', 'x', 'y', 'z', 's', 't', 'rx', 'ry', 'rz'])
+        two_qubit_gates = sum(count for gate, count in gate_counts.items() 
+                             if gate in ['cx', 'cz', 'swap', 'cp'])
+        
+        # Measure execution time
         start_time = time.time()
-        result = execute(circuit, simulator, shots=shots).result()
-        end_time = time.time()
         
-        execution_time = end_time - start_time
+        # Transpile for simulation
+        transpiled_circuit = transpile(circuit, basis_gates=['u1', 'u2', 'u3', 'cx'])
         
-        # Gather results
-        counts = result.get_counts()
-        total_counts = sum(counts.values())
-        
-        # Calculate empirical distribution
-        distribution = {state: count / total_counts for state, count in counts.items()}
-        
-        # Package benchmark results
-        benchmark_results = {
-            "success": result.success,
-            "shots": shots,
-            "execution_time": execution_time,
-            "simulator": "qiskit_qasm",
-            "circuit_metrics": {
-                "depth": depth,
-                "width": width,
-                "gate_counts": gate_counts
-            },
-            "counts": counts,
-            "distribution": distribution
-        }
-        
-        return benchmark_results
-        
+        # Run simulation
+        try:
+            simulator = AerSimulator()
+            job = simulator.run(transpiled_circuit, shots=shots)
+            result = job.result()
+            
+            # Get counts
+            counts = result.get_counts()
+            execution_time = time.time() - start_time
+            
+            # Prepare benchmark results
+            benchmark_result = {
+                "circuit": {
+                    "name": os.path.basename(circuit_file).replace(".qasm", ""),
+                    "qubits": num_qubits,
+                    "depth": depth,
+                    "gates": {
+                        "total": num_gates,
+                        "single_qubit": single_qubit_gates,
+                        "two_qubit": two_qubit_gates,
+                        "by_type": gate_counts
+                    }
+                },
+                "execution": {
+                    "backend": "qiskit_aer",
+                    "shots": shots,
+                    "time_seconds": execution_time
+                },
+                "metrics": {
+                    "success": True,
+                    "transpiled_depth": transpiled_circuit.depth(),
+                    "transpiled_gates": sum(transpiled_circuit.count_ops().values()),
+                }
+            }
+            
+            return benchmark_result
+            
+        except Exception as e:
+            logger.error(f"Error during simulation: {e}")
+            return None
+            
     except Exception as e:
-        logger.error(f"Error running benchmark: {e}")
+        logger.error(f"Error in benchmark: {e}")
         return None
 
 def create_visualizations(metrics, dest_dir):

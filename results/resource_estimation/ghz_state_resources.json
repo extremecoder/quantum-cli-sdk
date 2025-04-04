@@ -1,0 +1,39 @@
+{
+  "circuit_name": "ghz_state",
+  "qubit_count": 3,
+  "gate_counts": {
+    "total": 8,
+    "single_qubit": 3,
+    "two_qubit": 2,
+    "multi_qubit": 0,
+    "h": 1,
+    "x": 0,
+    "y": 0,
+    "z": 0,
+    "cx": 2,
+    "cz": 0,
+    "swap": 0,
+    "t": 1,
+    "tdg": 1,
+    "s": 0,
+    "sdg": 0,
+    "rx": 0,
+    "ry": 0,
+    "rz": 0,
+    "u1": 0,
+    "u2": 0,
+    "u3": 0,
+    "measure": 3,
+    "barrier": 0,
+    "other": 0
+  },
+  "circuit_depth": 5,
+  "critical_path_length": 5,
+  "t_depth": 1,
+  "estimated_runtime": {
+    "superconducting": "~1.0 \u03bcs",
+    "ion_trap": "~250.0 \u03bcs",
+    "photonic": "~175.0 \u03bcs"
+  },
+  "error_probability_estimate": 0.08030234117322477
+}
