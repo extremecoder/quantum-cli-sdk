@@ -163,6 +163,11 @@ def setup_ir_commands(subparsers):
     finetune_parser.add_argument("--hardware", choices=["ibm", "aws", "google"], default="ibm", help="Target hardware platform for fine-tuning")
     finetune_parser.add_argument("--search", choices=["grid", "random"], default="random", help="Search method for hyperparameter optimization")
     finetune_parser.add_argument("--shots", type=int, default=1000, help="Number of shots for simulation during fine-tuning")
+    finetune_parser.add_argument("--use-hardware", action="store_true", help="Execute circuits on actual quantum hardware instead of simulators")
+    finetune_parser.add_argument("--device-id", help="Specific hardware device ID to use (e.g., 'ibmq_manila' for IBM)")
+    finetune_parser.add_argument("--api-token", help="API token for the quantum platform (if not using configured credentials)")
+    finetune_parser.add_argument("--max-circuits", type=int, default=5, help="Maximum number of circuits to run on hardware (to control costs)")
+    finetune_parser.add_argument("--poll-timeout", type=int, default=3600, help="Maximum time in seconds to wait for hardware results")
 
 def setup_run_commands(subparsers):
     """Setup commands for running circuits (simulation, hardware)."""
@@ -777,7 +782,12 @@ def handle_ir_commands(args):
                 output_file=args.output_file,
                 hardware=args.hardware,
                 search_method=args.search,
-                shots=args.shots
+                shots=args.shots,
+                use_hardware=args.use_hardware,
+                device_id=args.device_id,
+                api_token=args.api_token,
+                max_circuits=args.max_circuits,
+                poll_timeout=args.poll_timeout
             )
             sys.exit(0 if success else 1)
         else:

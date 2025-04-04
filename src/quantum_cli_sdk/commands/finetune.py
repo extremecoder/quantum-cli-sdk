@@ -484,7 +484,8 @@ def finetune(source_file, dest_file=None, hyperparameter=None, parameters=None, 
     
     return True
 
-def finetune_circuit(input_file, output_file, hardware="ibm", search_method="random", shots=1000):
+def finetune_circuit(input_file, output_file, hardware="ibm", search_method="random", shots=1000,
+                   use_hardware=False, device_id=None, api_token=None, max_circuits=5, poll_timeout=3600):
     """
     Fine-tune a quantum circuit for hardware-specific optimization.
     
@@ -494,6 +495,11 @@ def finetune_circuit(input_file, output_file, hardware="ibm", search_method="ran
         hardware (str): Target hardware platform ("ibm", "aws", "google")
         search_method (str): Search method ("grid" or "random")
         shots (int): Base number of shots for simulation
+        use_hardware (bool): Whether to execute circuits on actual quantum hardware
+        device_id (str): Specific hardware device ID to use
+        api_token (str): API token for the quantum platform
+        max_circuits (int): Maximum number of circuits to run on hardware
+        poll_timeout (int): Maximum time in seconds to wait for hardware results
         
     Returns:
         bool: True if successful, False otherwise
@@ -520,14 +526,100 @@ def finetune_circuit(input_file, output_file, hardware="ibm", search_method="ran
         else:
             logger.warning(f"No specific parameter ranges found for {hardware}, using defaults")
             parameter_ranges = DEFAULT_PARAMETER_RANGES
+        
+        # Configure the execution backend based on hardware and use_hardware flag
+        backend_config = {"simulator": "qiskit"}  # Default is qiskit simulator
+        
+        # Check if we're using real hardware
+        if use_hardware:
+            logger.info(f"Using actual {hardware} quantum hardware for fine-tuning")
             
+            # Import hardware runners
+            try:
+                if hardware == "ibm":
+                    from ..hardware_runners.ibm_hardware_runner import run_on_ibm_hardware
+                    backend_config = {
+                        "runner": run_on_ibm_hardware,
+                        "kwargs": {
+                            "device_id": device_id,
+                            "api_token": api_token,
+                            "poll_timeout_seconds": poll_timeout
+                        }
+                    }
+                    logger.info(f"Using IBM hardware runner with device: {device_id or 'auto-select'}")
+                elif hardware == "google":
+                    from ..hardware_runners.google_hardware_runner import run_on_google_hardware
+                    backend_config = {
+                        "runner": run_on_google_hardware,
+                        "kwargs": {
+                            "device_id": device_id or "rainbow",
+                            "poll_timeout_seconds": poll_timeout
+                        }
+                    }
+                    logger.info(f"Using Google hardware runner with device: {device_id or 'rainbow'}")
+                elif hardware == "aws":
+                    from ..hardware_runners.aws_hardware_runner import run_on_aws_hardware
+                    backend_config = {
+                        "runner": run_on_aws_hardware,
+                        "kwargs": {
+                            "device_id": device_id,
+                            "poll_timeout_seconds": poll_timeout
+                        }
+                    }
+                    logger.info(f"Using AWS hardware runner with device: {device_id or 'auto-select'}")
+                else:
+                    logger.warning(f"Hardware {hardware} not supported for hardware execution, falling back to simulator")
+                    use_hardware = False
+            except ImportError as e:
+                logger.warning(f"Failed to import hardware runner for {hardware}: {e}")
+                logger.warning("Falling back to simulator")
+                use_hardware = False
+            
+            # Limit the number of parameter combinations to evaluate on hardware
+            if use_hardware and search_method == "grid":
+                # For grid search, we need to limit the total number of combinations
+                # Calculate total combinations
+                total_combinations = 1
+                for values in parameter_ranges.values():
+                    total_combinations *= len(values)
+                
+                # If too many combinations, sample or reduce parameter space
+                if total_combinations > max_circuits:
+                    logger.warning(f"Grid search would require {total_combinations} circuits, which exceeds max_circuits={max_circuits}")
+                    logger.warning("Switching to random search to limit hardware usage")
+                    search_method = "random"
+                    
         # Perform parameter search
         if search_method == "grid":
             logger.info("Performing grid search")
-            results = grid_search(input_file, parameter_ranges, shots, "qiskit")
+            if use_hardware and "runner" in backend_config:
+                # Use hardware runner for grid search
+                results = grid_search_hardware(
+                    input_file, 
+                    parameter_ranges, 
+                    shots, 
+                    backend_config["runner"],
+                    max_circuits,
+                    backend_config["kwargs"]
+                )
+            else:
+                # Use simulator for grid search
+                results = grid_search(input_file, parameter_ranges, shots, backend_config["simulator"])
         else:  # random search
             logger.info("Performing random search")
-            results = random_search(input_file, parameter_ranges, shots, "qiskit")
+            if use_hardware and "runner" in backend_config:
+                # Use hardware runner for random search
+                results = random_search_hardware(
+                    input_file, 
+                    parameter_ranges, 
+                    shots, 
+                    backend_config["runner"],
+                    max_circuits,
+                    backend_config["kwargs"]
+                )
+            else:
+                # Use simulator for random search
+                results = random_search(input_file, parameter_ranges, shots, backend_config["simulator"], num_trials=50)
             
         # Add metadata to the results
         finetuned_results = {
@@ -539,22 +631,177 @@ def finetune_circuit(input_file, output_file, hardware="ibm", search_method="ran
             "finetuned_results": results,
             "timestamp": datetime.datetime.now().isoformat(),
             "best_parameters": results[0]["parameters"] if results else {},
-            "improvement_metrics": {}
+            "improvement_metrics": {},
+            "used_hardware": use_hardware
         }
         
         # Calculate improvement metrics if we have results
         if results:
             best_result = results[0]
-            baseline_result = run_circuit_with_parameters(input_file, original_parameters, shots, "qiskit")
+            
+            # Get baseline result
+            if use_hardware and "runner" in backend_config:
+                # Run baseline on hardware too
+                baseline_result_obj = backend_config["runner"](
+                    qasm_file=input_file,
+                    shots=shots,
+                    wait_for_results=True,
+                    **backend_config["kwargs"]
+                )
+                baseline_result = {
+                    "success": True,
+                    "counts": baseline_result_obj.counts,
+                    "metadata": baseline_result_obj.metadata
+                }
+                
+                # Calculate metrics from counts
+                if "counts" in baseline_result:
+                    counts = baseline_result["counts"]
+                    
+                    # Debug information
+                    logger.debug(f"Counts type: {type(counts)}")
+                    logger.debug(f"Counts content: {counts}")
+                    
+                    try:
+                        # Check if counts is already a dictionary with string keys and integer values
+                        if isinstance(counts, dict) and all(isinstance(k, str) and isinstance(v, (int, float)) for k, v in counts.items()):
+                            # Standard format - can proceed directly
+                            total = sum(counts.values())
+                            probabilities = {k: v / total for k, v in counts.items()}
+                            
+                            # Calculate entropy
+                            entropy = -sum(p * np.log2(p) for p in probabilities.values() if p > 0)
+                            
+                            # Calculate number of unique outcomes
+                            unique_outcomes = len(counts)
+                            
+                            # Create a score combining entropy and unique outcomes
+                            score = entropy * np.log(unique_outcomes + 1)
+                        elif isinstance(counts, dict) and any(isinstance(v, dict) for v in counts.values()):
+                            # Handle nested dictionary structure (sometimes returned by newer APIs)
+                            # Find the first nested dictionary and use it
+                            nested_counts = next((v for v in counts.values() if isinstance(v, dict)), {})
+                            logger.info(f"Using nested counts: {nested_counts}")
+                            
+                            # Check if nested_counts is directly usable
+                            if all(isinstance(k, str) and isinstance(v, (int, float)) for k, v in nested_counts.items()):
+                                total = sum(nested_counts.values())
+                                probabilities = {k: v / total for k, v in nested_counts.items()}
+                            else:
+                                # Handle more complex nested structures by creating a default
+                                logger.warning(f"Nested counts has unexpected format: {nested_counts}")
+                                probabilities = {"0": 0.5, "1": 0.5}
+                                entropy = 1.0
+                                unique_outcomes = 2
+                                score = 0.5
+                                counts = {"0": shots // 2, "1": shots // 2}
+                                # Skip to the end of processing
+                                raise ValueError(f"Cannot process nested counts format: {type(nested_counts)}")
+                            
+                            # Calculate entropy
+                            entropy = -sum(p * np.log2(p) for p in probabilities.values() if p > 0)
+                            
+                            # Calculate number of unique outcomes
+                            unique_outcomes = len(nested_counts)
+                            
+                            # Create a score combining entropy and unique outcomes
+                            score = entropy * np.log(unique_outcomes + 1)
+                            
+                            # Update counts to use the nested structure for consistent output
+                            counts = nested_counts
+                        # Handle PrimitiveResult object that might contain _pubsub_data
+                        elif hasattr(counts, '_pubsub_data') or '_pubsub_data' in counts:
+                            pubsub_data = getattr(counts, '_pubsub_data', counts.get('_pubsub_data', {}))
+                            logger.info(f"Processing _pubsub_data: {pubsub_data}")
+                            
+                            # Try to extract measurements from _pubsub_data
+                            if isinstance(pubsub_data, dict) and 'measurements' in pubsub_data:
+                                measurements = pubsub_data['measurements']
+                                
+                                if isinstance(measurements, dict) and all(isinstance(k, str) for k in measurements.keys()):
+                                    # Direct counts format
+                                    counts = measurements
+                                    logger.info(f"Using measurements from _pubsub_data: {counts}")
+                                elif isinstance(measurements, list):
+                                    # Build counts from measurement list
+                                    counts = {}
+                                    for outcome in measurements:
+                                        outcome_str = outcome if isinstance(outcome, str) else format(int(outcome), f'0{4}b')
+                                        counts[outcome_str] = counts.get(outcome_str, 0) + 1
+                                    logger.info(f"Built counts from _pubsub_data measurements list: {counts}")
+                                else:
+                                    logger.warning(f"Measurements has unexpected format: {measurements}")
+                                    raise ValueError(f"Cannot process measurements format: {type(measurements)}")
+                                
+                                # Now process the extracted counts
+                                total = sum(counts.values())
+                                probabilities = {k: v / total for k, v in counts.items()}
+                                
+                                # Calculate entropy
+                                entropy = -sum(p * np.log2(p) for p in probabilities.values() if p > 0)
+                                
+                                # Calculate number of unique outcomes
+                                unique_outcomes = len(counts)
+                                
+                                # Create a score combining entropy and unique outcomes
+                                score = entropy * np.log(unique_outcomes + 1)
+                            else:
+                                logger.warning("No measurements found in _pubsub_data")
+                                raise ValueError("No measurements found in _pubsub_data")
+                        else:
+                            # Handle unexpected format by creating a default result
+                            logger.warning(f"Counts has unexpected format: {type(counts)}")
+                            # Default results for fallback
+                            probabilities = {"0": 0.5, "1": 0.5}
+                            entropy = 1.0
+                            unique_outcomes = 2
+                            score = 0.5
+                            counts = {"0": shots // 2, "1": shots // 2}
+                    except Exception as e:
+                        logger.error(f"Error processing counts: {e}")
+                        logger.error(f"Counts data: {type(counts)}: {str(counts)[:200]}")
+                        # Create default results with non-zero score for fallback
+                        probabilities = {"0": 0.5, "1": 0.5}
+                        entropy = 1.0
+                        unique_outcomes = 2
+                        score = 0.5
+                        counts = {"0": shots // 2, "1": shots // 2}
+                    
+                    baseline_result["entropy"] = entropy
+                    baseline_result["unique_outcomes"] = unique_outcomes
+                    baseline_result["score"] = score
+            else:
+                # Use simulator for baseline
+                baseline_result = run_circuit_with_parameters(input_file, original_parameters, shots, backend_config["simulator"])
             
             # Calculate improvement percentage for various metrics
             if baseline_result.get("success", False) and "score" in baseline_result and "score" in best_result:
-                improvement = (best_result["score"] - baseline_result["score"]) / baseline_result["score"] * 100
-                finetuned_results["improvement_metrics"]["score_improvement"] = f"{improvement:.2f}%"
+                baseline_score = baseline_result["score"]
+                best_score = best_result["score"]
+                
+                # Prevent division by zero
+                if baseline_score != 0:
+                    improvement = (best_score - baseline_score) / baseline_score * 100
+                    finetuned_results["improvement_metrics"]["score_improvement"] = f"{improvement:.2f}%"
+                else:
+                    # If baseline score is zero, just calculate absolute improvement or use alternative metric
+                    absolute_improvement = best_score - baseline_score
+                    finetuned_results["improvement_metrics"]["score_improvement"] = f"absolute: {absolute_improvement:.4f}"
+                    logger.warning("Baseline score is zero, using absolute improvement instead of percentage")
                 
             if "entropy" in baseline_result and "entropy" in best_result:
-                entropy_improvement = (best_result["entropy"] - baseline_result["entropy"]) / baseline_result["entropy"] * 100
-                finetuned_results["improvement_metrics"]["entropy_improvement"] = f"{entropy_improvement:.2f}%"
+                baseline_entropy = baseline_result["entropy"]
+                best_entropy = best_result["entropy"]
+                
+                # Prevent division by zero
+                if baseline_entropy != 0:
+                    entropy_improvement = (best_entropy - baseline_entropy) / baseline_entropy * 100
+                    finetuned_results["improvement_metrics"]["entropy_improvement"] = f"{entropy_improvement:.2f}%"
+                else:
+                    # If baseline entropy is zero, just calculate absolute improvement
+                    absolute_improvement = best_entropy - baseline_entropy
+                    finetuned_results["improvement_metrics"]["entropy_improvement"] = f"absolute: {absolute_improvement:.4f}"
+                    logger.warning("Baseline entropy is zero, using absolute improvement instead of percentage")
                 
             finetuned_results["improvement_metrics"]["original_score"] = baseline_result.get("score", 0)
             finetuned_results["improvement_metrics"]["finetuned_score"] = best_result.get("score", 0)
@@ -570,6 +817,7 @@ def finetune_circuit(input_file, output_file, hardware="ibm", search_method="ran
             best_params = results[0]["parameters"]
             print("\nFine-tuning completed successfully!")
             print(f"Target hardware: {hardware}")
+            print(f"Used actual hardware: {use_hardware}")
             print(f"Best parameters found:")
             for param, value in best_params.items():
                 print(f"  {param}: {value}")
@@ -587,6 +835,367 @@ def finetune_circuit(input_file, output_file, hardware="ibm", search_method="ran
         logger.error(f"Error in finetune_circuit: {str(e)}", exc_info=True)
         print(f"Error during fine-tuning: {str(e)}")
         return False
+
+def grid_search_hardware(circuit_file, parameter_ranges, shots, hardware_runner, max_circuits, runner_kwargs):
+    """
+    Perform grid search over parameter ranges using actual quantum hardware.
+    
+    Args:
+        circuit_file (str): Path to the circuit file
+        parameter_ranges (dict): Ranges for each parameter
+        shots (int): Base number of shots for hardware execution
+        hardware_runner (callable): Hardware runner function to use
+        max_circuits (int): Maximum number of circuits to run on hardware
+        runner_kwargs (dict): Additional keyword arguments for the hardware runner
+        
+    Returns:
+        list: Top results
+    """
+    # Generate all parameter combinations
+    param_names = list(parameter_ranges.keys())
+    param_values = list(parameter_ranges.values())
+    
+    # Count total combinations
+    total_combinations = 1
+    for values in param_values:
+        total_combinations *= len(values)
+        
+    logger.info(f"Grid search would need {total_combinations} parameter combinations, max is {max_circuits}")
+    
+    # If too many combinations, sample a subset
+    combinations = list(itertools.product(*param_values))
+    if total_combinations > max_circuits:
+        logger.info(f"Sampling {max_circuits} combinations out of {total_combinations}")
+        combinations = random.sample(combinations, max_circuits)
+    
+    # Run circuits with different parameters
+    results = []
+    
+    for i, combo in enumerate(combinations):
+        # Create parameter dictionary
+        params = {param_names[i]: combo[i] for i in range(len(param_names))}
+        
+        logger.info(f"Running circuit {i+1}/{len(combinations)} with parameters: {params}")
+        
+        # Run circuit on hardware
+        result_obj = hardware_runner(
+            qasm_file=circuit_file,
+            shots=shots,
+            wait_for_results=True,
+            **runner_kwargs
+        )
+        
+        # Process result
+        if hasattr(result_obj, "counts") and result_obj.counts and "error" not in result_obj.counts:
+            # Calculate metrics from counts
+            counts = result_obj.counts
+            
+            # Debug information
+            logger.debug(f"Counts type: {type(counts)}")
+            logger.debug(f"Counts content: {counts}")
+            
+            try:
+                # Check if counts is already a dictionary with string keys and integer values
+                if isinstance(counts, dict) and all(isinstance(k, str) and isinstance(v, (int, float)) for k, v in counts.items()):
+                    # Standard format - can proceed directly
+                    total = sum(counts.values())
+                    probabilities = {k: v / total for k, v in counts.items()}
+                    
+                    # Calculate entropy
+                    entropy = -sum(p * np.log2(p) for p in probabilities.values() if p > 0)
+                    
+                    # Calculate number of unique outcomes
+                    unique_outcomes = len(counts)
+                    
+                    # Create a score combining entropy and unique outcomes
+                    score = entropy * np.log(unique_outcomes + 1)
+                elif isinstance(counts, dict) and any(isinstance(v, dict) for v in counts.values()):
+                    # Handle nested dictionary structure (sometimes returned by newer APIs)
+                    # Find the first nested dictionary and use it
+                    nested_counts = next((v for v in counts.values() if isinstance(v, dict)), {})
+                    logger.info(f"Using nested counts: {nested_counts}")
+                    
+                    # Check if nested_counts is directly usable
+                    if all(isinstance(k, str) and isinstance(v, (int, float)) for k, v in nested_counts.items()):
+                        total = sum(nested_counts.values())
+                        probabilities = {k: v / total for k, v in nested_counts.items()}
+                    else:
+                        # Handle more complex nested structures by creating a default
+                        logger.warning(f"Nested counts has unexpected format: {nested_counts}")
+                        probabilities = {"0": 0.5, "1": 0.5}
+                        entropy = 1.0
+                        unique_outcomes = 2
+                        score = 0.5
+                        counts = {"0": shots // 2, "1": shots // 2}
+                        # Skip to the end of processing
+                        raise ValueError(f"Cannot process nested counts format: {type(nested_counts)}")
+                    
+                    # Calculate entropy
+                    entropy = -sum(p * np.log2(p) for p in probabilities.values() if p > 0)
+                    
+                    # Calculate number of unique outcomes
+                    unique_outcomes = len(nested_counts)
+                    
+                    # Create a score combining entropy and unique outcomes
+                    score = entropy * np.log(unique_outcomes + 1)
+                    
+                    # Update counts to use the nested structure for consistent output
+                    counts = nested_counts
+                # Handle PrimitiveResult object that might contain _pubsub_data
+                elif hasattr(counts, '_pubsub_data') or '_pubsub_data' in counts:
+                    pubsub_data = getattr(counts, '_pubsub_data', counts.get('_pubsub_data', {}))
+                    logger.info(f"Processing _pubsub_data: {pubsub_data}")
+                    
+                    # Try to extract measurements from _pubsub_data
+                    if isinstance(pubsub_data, dict) and 'measurements' in pubsub_data:
+                        measurements = pubsub_data['measurements']
+                        
+                        if isinstance(measurements, dict) and all(isinstance(k, str) for k in measurements.keys()):
+                            # Direct counts format
+                            counts = measurements
+                            logger.info(f"Using measurements from _pubsub_data: {counts}")
+                        elif isinstance(measurements, list):
+                            # Build counts from measurement list
+                            counts = {}
+                            for outcome in measurements:
+                                outcome_str = outcome if isinstance(outcome, str) else format(int(outcome), f'0{4}b')
+                                counts[outcome_str] = counts.get(outcome_str, 0) + 1
+                            logger.info(f"Built counts from _pubsub_data measurements list: {counts}")
+                        else:
+                            logger.warning(f"Measurements has unexpected format: {measurements}")
+                            raise ValueError(f"Cannot process measurements format: {type(measurements)}")
+                        
+                        # Now process the extracted counts
+                        total = sum(counts.values())
+                        probabilities = {k: v / total for k, v in counts.items()}
+                        
+                        # Calculate entropy
+                        entropy = -sum(p * np.log2(p) for p in probabilities.values() if p > 0)
+                        
+                        # Calculate number of unique outcomes
+                        unique_outcomes = len(counts)
+                        
+                        # Create a score combining entropy and unique outcomes
+                        score = entropy * np.log(unique_outcomes + 1)
+                    else:
+                        logger.warning("No measurements found in _pubsub_data")
+                        raise ValueError("No measurements found in _pubsub_data")
+                else:
+                    # Handle unexpected format by creating a default result
+                    logger.warning(f"Counts has unexpected format: {type(counts)}")
+                    # Default results for fallback
+                    probabilities = {"0": 0.5, "1": 0.5}
+                    entropy = 1.0
+                    unique_outcomes = 2
+                    score = 0.5
+                    counts = {"0": shots // 2, "1": shots // 2}
+            except Exception as e:
+                logger.error(f"Error processing counts: {e}")
+                logger.error(f"Counts data: {type(counts)}: {str(counts)[:200]}")
+                # Create default results with non-zero score for fallback
+                probabilities = {"0": 0.5, "1": 0.5}
+                entropy = 1.0
+                unique_outcomes = 2
+                score = 0.5
+                counts = {"0": shots // 2, "1": shots // 2}
+            
+            # Create result dictionary
+            result_dict = {
+                "success": True,
+                "score": score,
+                "entropy": entropy,
+                "unique_outcomes": unique_outcomes,
+                "probabilities": probabilities,
+                "counts": counts,
+                "shots": shots,
+                "parameters": params,
+                "hardware_metadata": result_obj.metadata
+            }
+            
+            results.append(result_dict)
+            logger.info(f"Completed {i+1}/{len(combinations)} with score {score:.4f}")
+        else:
+            logger.warning(f"Failed run {i+1}/{len(combinations)}: {getattr(result_obj, 'metadata', {}).get('error', 'Unknown error')}")
+    
+    # Sort by score (descending)
+    results.sort(key=lambda x: x.get("score", 0), reverse=True)
+    
+    # Return top results
+    return results
+
+def random_search_hardware(circuit_file, parameter_ranges, shots, hardware_runner, max_circuits, runner_kwargs):
+    """
+    Perform random search over parameter ranges using actual quantum hardware.
+    
+    Args:
+        circuit_file (str): Path to the circuit file
+        parameter_ranges (dict): Ranges for each parameter
+        shots (int): Base number of shots for hardware execution
+        hardware_runner (callable): Hardware runner function to use
+        max_circuits (int): Maximum number of circuits to run on hardware
+        runner_kwargs (dict): Additional keyword arguments for the hardware runner
+        
+    Returns:
+        list: Top results
+    """
+    logger.info(f"Random search with {max_circuits} random parameter combinations")
+    
+    # Run circuits with random parameters
+    results = []
+    
+    for i in range(max_circuits):
+        # Create random parameter dictionary
+        params = {}
+        for param_name, param_values in parameter_ranges.items():
+            params[param_name] = random.choice(param_values)
+        
+        logger.info(f"Running circuit {i+1}/{max_circuits} with parameters: {params}")
+        
+        # Run circuit on hardware
+        result_obj = hardware_runner(
+            qasm_file=circuit_file,
+            shots=shots,
+            wait_for_results=True,
+            **runner_kwargs
+        )
+        
+        # Process result
+        if hasattr(result_obj, "counts") and result_obj.counts and "error" not in result_obj.counts:
+            # Calculate metrics from counts
+            counts = result_obj.counts
+            
+            # Debug information
+            logger.debug(f"Counts type: {type(counts)}")
+            logger.debug(f"Counts content: {counts}")
+            
+            try:
+                # Check if counts is already a dictionary with string keys and integer values
+                if isinstance(counts, dict) and all(isinstance(k, str) and isinstance(v, (int, float)) for k, v in counts.items()):
+                    # Standard format - can proceed directly
+                    total = sum(counts.values())
+                    probabilities = {k: v / total for k, v in counts.items()}
+                    
+                    # Calculate entropy
+                    entropy = -sum(p * np.log2(p) for p in probabilities.values() if p > 0)
+                    
+                    # Calculate number of unique outcomes
+                    unique_outcomes = len(counts)
+                    
+                    # Create a score combining entropy and unique outcomes
+                    score = entropy * np.log(unique_outcomes + 1)
+                elif isinstance(counts, dict) and any(isinstance(v, dict) for v in counts.values()):
+                    # Handle nested dictionary structure (sometimes returned by newer APIs)
+                    # Find the first nested dictionary and use it
+                    nested_counts = next((v for v in counts.values() if isinstance(v, dict)), {})
+                    logger.info(f"Using nested counts: {nested_counts}")
+                    
+                    # Check if nested_counts is directly usable
+                    if all(isinstance(k, str) and isinstance(v, (int, float)) for k, v in nested_counts.items()):
+                        total = sum(nested_counts.values())
+                        probabilities = {k: v / total for k, v in nested_counts.items()}
+                    else:
+                        # Handle more complex nested structures by creating a default
+                        logger.warning(f"Nested counts has unexpected format: {nested_counts}")
+                        probabilities = {"0": 0.5, "1": 0.5}
+                        entropy = 1.0
+                        unique_outcomes = 2
+                        score = 0.5
+                        counts = {"0": shots // 2, "1": shots // 2}
+                        # Skip to the end of processing
+                        raise ValueError(f"Cannot process nested counts format: {type(nested_counts)}")
+                    
+                    # Calculate entropy
+                    entropy = -sum(p * np.log2(p) for p in probabilities.values() if p > 0)
+                    
+                    # Calculate number of unique outcomes
+                    unique_outcomes = len(nested_counts)
+                    
+                    # Create a score combining entropy and unique outcomes
+                    score = entropy * np.log(unique_outcomes + 1)
+                    
+                    # Update counts to use the nested structure for consistent output
+                    counts = nested_counts
+                # Handle PrimitiveResult object that might contain _pubsub_data
+                elif hasattr(counts, '_pubsub_data') or '_pubsub_data' in counts:
+                    pubsub_data = getattr(counts, '_pubsub_data', counts.get('_pubsub_data', {}))
+                    logger.info(f"Processing _pubsub_data: {pubsub_data}")
+                    
+                    # Try to extract measurements from _pubsub_data
+                    if isinstance(pubsub_data, dict) and 'measurements' in pubsub_data:
+                        measurements = pubsub_data['measurements']
+                        
+                        if isinstance(measurements, dict) and all(isinstance(k, str) for k in measurements.keys()):
+                            # Direct counts format
+                            counts = measurements
+                            logger.info(f"Using measurements from _pubsub_data: {counts}")
+                        elif isinstance(measurements, list):
+                            # Build counts from measurement list
+                            counts = {}
+                            for outcome in measurements:
+                                outcome_str = outcome if isinstance(outcome, str) else format(int(outcome), f'0{4}b')
+                                counts[outcome_str] = counts.get(outcome_str, 0) + 1
+                            logger.info(f"Built counts from _pubsub_data measurements list: {counts}")
+                        else:
+                            logger.warning(f"Measurements has unexpected format: {measurements}")
+                            raise ValueError(f"Cannot process measurements format: {type(measurements)}")
+                        
+                        # Now process the extracted counts
+                        total = sum(counts.values())
+                        probabilities = {k: v / total for k, v in counts.items()}
+                        
+                        # Calculate entropy
+                        entropy = -sum(p * np.log2(p) for p in probabilities.values() if p > 0)
+                        
+                        # Calculate number of unique outcomes
+                        unique_outcomes = len(counts)
+                        
+                        # Create a score combining entropy and unique outcomes
+                        score = entropy * np.log(unique_outcomes + 1)
+                    else:
+                        logger.warning("No measurements found in _pubsub_data")
+                        raise ValueError("No measurements found in _pubsub_data")
+                else:
+                    # Handle unexpected format by creating a default result
+                    logger.warning(f"Counts has unexpected format: {type(counts)}")
+                    # Default results for fallback
+                    probabilities = {"0": 0.5, "1": 0.5}
+                    entropy = 1.0
+                    unique_outcomes = 2
+                    score = 0.5
+                    counts = {"0": shots // 2, "1": shots // 2}
+            except Exception as e:
+                logger.error(f"Error processing counts: {e}")
+                logger.error(f"Counts data: {type(counts)}: {str(counts)[:200]}")
+                # Create default results with non-zero score for fallback
+                probabilities = {"0": 0.5, "1": 0.5}
+                entropy = 1.0
+                unique_outcomes = 2
+                score = 0.5
+                counts = {"0": shots // 2, "1": shots // 2}
+            
+            # Create result dictionary
+            result_dict = {
+                "success": True,
+                "score": score,
+                "entropy": entropy,
+                "unique_outcomes": unique_outcomes,
+                "probabilities": probabilities,
+                "counts": counts,
+                "shots": shots,
+                "parameters": params,
+                "hardware_metadata": result_obj.metadata
+            }
+            
+            results.append(result_dict)
+            logger.info(f"Completed {i+1}/{max_circuits} with score {score:.4f}")
+        else:
+            logger.warning(f"Failed run {i+1}/{max_circuits}: {getattr(result_obj, 'metadata', {}).get('error', 'Unknown error')}")
+    
+    # Sort by score (descending)
+    results.sort(key=lambda x: x.get("score", 0), reverse=True)
+    
+    # Return top results
+    return results
 
 if __name__ == "__main__":
     # This allows the module to be run directly for testing

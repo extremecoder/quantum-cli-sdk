@@ -71,3 +71,7 @@ Generate tests using llm such a way that it tests the generated ir code from eve
 
 ## Discovered During Work
 <!-- Add new tasks discovered during development here -->
+50. [x] 2025-04-05: Add hardware execution support to `ir finetune` command
+51. [ ] 2025-04-10: Add hardware execution support to `run simulate` command
+52. [ ] 2025-04-15: Implement robust error handling for hardware connections
+53. [ ] 2025-04-20: Add usage metrics tracking for hardware execution

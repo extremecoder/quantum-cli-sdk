@@ -1,0 +1,12 @@
+{
+  "circuit_file": "my-cli-test-app/ir/openqasm/bell_verify.qasm",
+  "hardware_target": "ibm",
+  "search_method": "random",
+  "base_shots": 1024,
+  "original_parameters": {},
+  "finetuned_results": [],
+  "timestamp": "2025-04-04T16:55:56.591187",
+  "best_parameters": {},
+  "improvement_metrics": {},
+  "used_hardware": true
+}

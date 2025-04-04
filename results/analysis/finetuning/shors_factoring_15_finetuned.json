@@ -1,0 +1,12 @@
+{
+  "circuit_file": "my-cli-test-app/ir/openqasm/shors_factoring_15_compatible.qasm",
+  "hardware_target": "ibm",
+  "search_method": "random",
+  "base_shots": 1024,
+  "original_parameters": {},
+  "finetuned_results": [],
+  "timestamp": "2025-04-04T17:31:27.015831",
+  "best_parameters": {},
+  "improvement_metrics": {},
+  "used_hardware": true
+}

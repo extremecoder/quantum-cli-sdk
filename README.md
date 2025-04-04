@@ -248,3 +248,94 @@ pytest
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Commands
+
+The Quantum CLI SDK supports the following commands:
+
+### IR Commands
+
+The following commands operate on IR files:
+
+- `ir finetune`: Fine-tune a quantum circuit for hardware-specific optimization
+  - `--input-file`: Path to the input OpenQASM file
+  - `--output-file`: Path to save the fine-tuning results (JSON)
+  - `--hardware`: Target hardware platform (ibm, aws, google)
+  - `--search-method`: Search method (grid or random)
+  - `--shots`: Base number of shots for simulation
+  - `--use-hardware`: Enable execution on actual quantum hardware
+  - `--device-id`: Specific hardware device ID to use
+  - `--api-token`: API token for the quantum platform
+  - `--max-circuits`: Maximum number of circuits to run on hardware (default: 5)
+  - `--poll-timeout`: Maximum time in seconds to wait for hardware results (default: 3600)
+
+## Fine-tuning
+
+Fine-tuning is a process of optimizing the transpiler and hardware-specific parameters for a given quantum circuit to improve its performance on a specific quantum hardware platform. Unlike training machine learning models, quantum circuit fine-tuning focuses on finding the optimal configuration of the toolchain that converts your high-level circuit to the hardware's native gates and topology.
+
+### How Fine-tuning Works
+
+1. **Parameter space definition**: The system defines ranges for hardware-specific parameters such as:
+   - Optimization level (0-3)
+   - Layout method (sabre, dense, noise_adaptive, etc.)
+   - Routing method (basic, lookahead, stochastic, etc.)
+   - Scheduling method (asap, alap)
+   - Transpiler seed values
+
+2. **Parameter exploration**: The fine-tuner explores this space using either:
+   - Grid search: Systematically trying parameter combinations
+   - Random search: Randomly sampling parameter combinations
+
+3. **Execution and evaluation**: For each parameter set, the system:
+   - Runs the circuit (either on a simulator or real hardware if `--use-hardware` is specified)
+   - Calculates performance metrics (entropy of results, unique outcomes, etc.)
+   - Ranks the parameter sets based on performance
+
+4. **Baseline comparison**: The best parameter set is compared against a baseline run with default parameters to quantify the improvement.
+
+5. **Results output**: The system outputs the optimal parameters and their impact on performance.
+
+When using simulators, we can explore more parameter combinations. With real hardware (using the `--use-hardware` flag), the system limits exploration to the number specified in `--max-circuits` to control costs and execution time.
+
+The main difference between simulator-based and hardware-based fine-tuning is that hardware-based fine-tuning provides more accurate results for actual quantum hardware but at higher cost and longer execution times.
+
+### Example Usage
+
+```bash
+# Fine-tune using simulator
+quantum-cli ir finetune --input-file circuit.qasm --output-file results.json --hardware ibm --search-method random
+
+# Fine-tune using actual hardware
+quantum-cli ir finetune --input-file circuit.qasm --output-file results.json --hardware ibm --search-method random --use-hardware --max-circuits 5
+```
+
+## Hardware Execution
+
+The CLI supports running quantum circuits on actual quantum hardware from IBM Quantum, Google Quantum, and AWS Braket. To use this feature:
+
+1. Install the appropriate SDK:
+   - IBM Quantum: `pip install qiskit qiskit-ibmq-provider`
+   - Google Quantum: `pip install cirq cirq-google`
+   - AWS Braket: `pip install amazon-braket-sdk`
+
+2. Set up your credentials:
+   - IBM Quantum: Configure with `qiskit-ibmq-provider` or provide API token
+   - Google Quantum: Set up Google Cloud authentication
+   - AWS Braket: Configure AWS credentials through AWS CLI or environment variables
+
+3. Use the `--use-hardware` flag with commands that support hardware execution:
+   ```
+   quantum-cli ir finetune --input-file circuit.qasm --output-file results.json --hardware ibm --use-hardware --device-id ibmq_manila
+   ```
+
+Hardware execution is supported for the following commands:
+- `ir finetune`: Run fine-tuning on actual quantum hardware
+- `ir run`: Run a circuit on quantum hardware
+
+When using hardware execution, consider the following:
+- Running on real hardware may incur costs depending on your provider
+- Hardware execution is significantly slower than simulation
+- The `--max-circuits` parameter limits the number of circuits to run on hardware
+- The `--poll-timeout` parameter sets the maximum time to wait for results
+
+For fine-tuning on hardware, the CLI automatically limits the number of parameter combinations to evaluate based on the `--max-circuits` setting to prevent excessive hardware usage.

@@ -136,3 +136,22 @@ quantum-cli ir finetune --input-file ir/openqasm/shors_factoring_15_compatible.q
 
 The fine-tuning process uses hyperparameter optimization to identify the best hardware-specific settings for your quantum circuit, maximizing its performance on the target hardware.
 
+### Hardware Execution
+
+For real hardware execution, you can enable the `--use-hardware` flag:
+
+```bash
+quantum-cli ir finetune --input-file ir/openqasm/shors_factoring_15_compatible.qasm --output-file results/analysis/finetuning/shors_factoring_15_hardware_finetuned.json --hardware ibm --search random --shots 1024 --use-hardware --device-id ibmq_manila --max-circuits 3
+```
+
+Using real hardware provides more accurate fine-tuning results specific to the actual quantum processor, but:
+- Requires access credentials for the quantum hardware provider
+- May incur costs based on the provider's pricing
+- Takes longer to execute due to queue times and actual quantum execution
+- Is limited by the `--max-circuits` parameter to control the number of circuit variants executed
+
+The hardware execution supports:
+- **IBM Quantum**: Requires Qiskit installation and configured credentials
+- **Google Quantum**: Requires Cirq and Google Cloud authentication
+- **AWS Braket**: Requires the AWS Braket SDK and configured AWS credentials
+
