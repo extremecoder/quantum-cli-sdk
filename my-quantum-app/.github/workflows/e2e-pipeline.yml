@@ -109,22 +109,14 @@ jobs:
 
       - name: Generate Base OpenQASM IR
         run: |
-          mkdir -p ir/base
-          # Generate IR using the source file and default destination path
-          quantum-cli ir generate \
-            --source source/circuits/${{ matrix.source_file }}
-          echo "Generated Base OpenQASM IR for ${{ matrix.source_file }} with default destination"
-          
-          # Also generate to the explicit openqasm directory for backward compatibility
           mkdir -p ir/openqasm
           quantum-cli ir generate \
             --source source/circuits/${{ matrix.source_file }} \
             --dest ir/openqasm/${{ matrix.source_file }}.qasm
-          echo "Generated Base OpenQASM IR for ${{ matrix.source_file }} in openqasm directory"
+          echo "Generated Base OpenQASM IR for ${{ matrix.source_file }}"
 
       - name: Commit generated IR
         run: |
-          git add ir/base/
           git add ir/openqasm/${{ matrix.source_file }}.qasm
           # Commit only if changes detected
           git diff --staged --quiet || git commit -m "ci: Generate base OpenQASM for ${{ matrix.source_file }}"
@@ -160,34 +152,20 @@ jobs:
       - name: Validate Base OpenQASM IR
         run: |
           mkdir -p results/validation
-          
-          # First check the default output location
-          BASE_FILE="ir/base/${{ matrix.source_file }}.qasm"
-          if [ -f "$BASE_FILE" ]; then
+          # Check if the IR file exists before validating
+          if [ -f "ir/openqasm/${{ matrix.source_file }}.qasm" ]; then
             quantum-cli ir validate \
-              "$BASE_FILE" \
-              --output results/validation/${{ matrix.source_file }}_base.json
-            echo "Validated Base OpenQASM for ${{ matrix.source_file }} from default location"
-          else
-            echo "Default IR file not found: $BASE_FILE"
-            mkdir -p results/validation && echo '{"status": "skipped", "reason": "Default IR file not found"}' > results/validation/${{ matrix.source_file }}_base.json
-          fi
-          
-          # Also check the openqasm directory for backward compatibility
-          OPENQASM_FILE="ir/openqasm/${{ matrix.source_file }}.qasm"
-          if [ -f "$OPENQASM_FILE" ]; then
-            quantum-cli ir validate \
-              "$OPENQASM_FILE" \
+              ir/openqasm/${{ matrix.source_file }}.qasm \
               --output results/validation/${{ matrix.source_file }}.json
-            echo "Validated Base OpenQASM for ${{ matrix.source_file }} from openqasm directory"
+            echo "Validated Base OpenQASM for ${{ matrix.source_file }}"
           else
-            echo "Skipping validation, IR file not found: $OPENQASM_FILE"
+            echo "Skipping validation, IR file not found: ir/openqasm/${{ matrix.source_file }}.qasm"
+            # Create an empty placeholder result? Or fail the step? Let's log and continue.
             mkdir -p results/validation && echo '{"status": "skipped", "reason": "Input IR file not found"}' > results/validation/${{ matrix.source_file }}.json
           fi
 
       - name: Commit validation results
         run: |
-          git add results/validation/${{ matrix.source_file }}_base.json
           git add results/validation/${{ matrix.source_file }}.json
           git diff --staged --quiet || git commit -m "ci: Add validation results for ${{ matrix.source_file }}"
           git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for validation results ${{ matrix.source_file }}"
@@ -222,35 +200,19 @@ jobs:
         run: |
           # Standardized path
           mkdir -p results/security
-          
-          # First check the default output location
-          BASE_FILE="ir/base/${{ matrix.source_file }}.qasm"
-          if [ -f "$BASE_FILE" ]; then
+          if [ -f "ir/openqasm/${{ matrix.source_file }}.qasm" ]; then
             quantum-cli security scan \
-              "$BASE_FILE" \
-              --output results/security/${{ matrix.source_file }}_base.json
-            echo "Security scan completed for ${{ matrix.source_file }} from default location"
-          else
-            echo "Default IR file not found: $BASE_FILE"
-            mkdir -p results/security && echo '{"status": "skipped", "reason": "Default IR file not found"}' > results/security/${{ matrix.source_file }}_base.json
-          fi
-          
-          # Also check the openqasm directory for backward compatibility
-          OPENQASM_FILE="ir/openqasm/${{ matrix.source_file }}.qasm"
-          if [ -f "$OPENQASM_FILE" ]; then
-            quantum-cli security scan \
-              "$OPENQASM_FILE" \
+              ir/openqasm/${{ matrix.source_file }}.qasm \
               --output results/security/${{ matrix.source_file }}.json
-            echo "Security scan completed for ${{ matrix.source_file }} from openqasm directory"
+            echo "Security scan completed for ${{ matrix.source_file }}"
           else
-             echo "Skipping security scan, IR file not found: $OPENQASM_FILE"
+             echo "Skipping security scan, IR file not found: ir/openqasm/${{ matrix.source_file }}.qasm"
              mkdir -p results/security && echo '{"status": "skipped", "reason": "Input IR file not found"}' > results/security/${{ matrix.source_file }}.json
           fi
 
       - name: Commit security reports
         run: |
           # Standardized path
-          git add results/security/${{ matrix.source_file }}_base.json
           git add results/security/${{ matrix.source_file }}.json
           git diff --staged --quiet || git commit -m "ci: Add security report for ${{ matrix.source_file }}"
           git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for security report ${{ matrix.source_file }}"
@@ -287,44 +249,23 @@ jobs:
 
       - name: Optimize Base OpenQASM IR
         run: |
-          mkdir -p ir/optimized
-          
-          # First try the default base location
-          BASE_FILE="ir/base/${{ matrix.source_file }}.qasm"
-          if [ -f "$BASE_FILE" ]; then
-            # Standard optimization (level 2)
+          mkdir -p ir/openqasm/optimized
+          if [ -f "ir/openqasm/${{ matrix.source_file }}.qasm" ]; then
             quantum-cli ir optimize \
-              --input-file "$BASE_FILE" \
-              --output-file "ir/optimized/${{ matrix.source_file }}_base.qasm" \
-              --level 2 \
-              --format json
-            echo "Optimized Base IR for ${{ matrix.source_file }} from default location"
+              --input-file ir/openqasm/${{ matrix.source_file }}.qasm \
+              --output-file ir/openqasm/optimized/${{ matrix.source_file }}.qasm
+            echo "Optimized OpenQASM for ${{ matrix.source_file }}"
           else
-            echo "Default IR file not found for optimization: $BASE_FILE"
-          fi
-          
-          # Also try the openqasm directory for backward compatibility
-          OPENQASM_FILE="ir/openqasm/${{ matrix.source_file }}.qasm"
-          if [ -f "$OPENQASM_FILE" ]; then
-            # Standard optimization (level 2)
-            quantum-cli ir optimize \
-              --input-file "$OPENQASM_FILE" \
-              --output-file "ir/optimized/${{ matrix.source_file }}.qasm" \
-              --level 2 \
-              --format json
-            echo "Optimized Base IR for ${{ matrix.source_file }} from openqasm directory"
-          else
-            echo "OpenQASM IR file not found for optimization: $OPENQASM_FILE"
+            echo "Skipping optimization, base IR file not found: ir/openqasm/${{ matrix.source_file }}.qasm"
+            # We need the output file for downstream tasks, maybe copy base? Or fail? Let's copy base.
+            mkdir -p ir/openqasm/optimized
+            cp ir/openqasm/${{ matrix.source_file }}.qasm ir/openqasm/optimized/${{ matrix.source_file }}.qasm || echo "Failed to copy base IR as optimized placeholder"
           fi
 
       - name: Commit optimized IR
         run: |
-          # We may have both or either one of the files
-          # Only attempt to add if files exist (avoids git errors)
-          [ -f "ir/optimized/${{ matrix.source_file }}_base.qasm" ] && git add "ir/optimized/${{ matrix.source_file }}_base.qasm"
-          [ -f "ir/optimized/${{ matrix.source_file }}.qasm" ] && git add "ir/optimized/${{ matrix.source_file }}.qasm"
-          # Only commit if any changes were staged
-          git diff --staged --quiet || git commit -m "ci: Add optimized IR for ${{ matrix.source_file }}"
+          git add ir/openqasm/optimized/${{ matrix.source_file }}.qasm
+          git diff --staged --quiet || git commit -m "ci: Add optimized OpenQASM for ${{ matrix.source_file }}"
           git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for optimized IR ${{ matrix.source_file }}"
 
   mitigate:

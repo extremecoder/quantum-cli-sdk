@@ -372,21 +372,52 @@ OpenQASM 2.0 Code:
         print(f"Error communicating with Together AI: {e}", file=sys.stderr)
         return None
 
-def generate_ir(source: str, dest: str, llm_provider: Optional[str] = None, llm_model: Optional[str] = None) -> Optional[str]:
+def generate_ir(source: str = None, dest: str = None, use_llm: bool = False, 
+                llm_provider: Optional[str] = None, llm_model: Optional[str] = None) -> Optional[str]:
     """
     Generates OpenQASM 2.0 Intermediate Representation (IR) from a source Python file.
 
     Can use either framework-specific conversion logic or an external LLM provider.
 
     Args:
-        source (str): Path to the source Python file containing the circuit definition.
-        dest (str): Path to save the generated OpenQASM file.
+        source (str, optional): Path to the source Python file containing the circuit definition.
+                               If None, uses the default path 'source/circuits'.
+        dest (str, optional): Path to save the generated OpenQASM file.
+                             If None, uses the default path 'ir/base'.
+        use_llm (bool): Whether to use LLM for generation.
         llm_provider (Optional[str]): The LLM provider to use (e.g., 'togetherai').
         llm_model (Optional[str]): The specific LLM model name to use.
 
     Returns:
         Optional[str]: The path to the generated QASM file if successful, None otherwise.
     """
+    # Handle default source and destination paths
+    if source is None:
+        source = os.path.join(os.getcwd(), "source", "circuits")
+        # If source is a directory, look for Python files
+        if os.path.isdir(source):
+            python_files = [f for f in os.listdir(source) if f.endswith('.py')]
+            if not python_files:
+                logger.error(f"No Python files found in default source directory: {source}")
+                print(f"Error: No Python files found in default source directory: {source}", file=sys.stderr)
+                return None
+            # Use the first Python file found
+            source = os.path.join(source, python_files[0])
+            logger.info(f"Using default source file: {source}")
+        else:
+            logger.error(f"Default source directory not found: {source}")
+            print(f"Error: Default source directory not found: {source}. Please create it or specify --source.", file=sys.stderr)
+            return None
+    
+    if dest is None:
+        dest_dir = os.path.join(os.getcwd(), "ir", "base")
+        os.makedirs(dest_dir, exist_ok=True)
+        # Extract filename from source and use it for destination
+        source_filename = os.path.basename(source)
+        dest_filename = os.path.splitext(source_filename)[0] + ".qasm"
+        dest = os.path.join(dest_dir, dest_filename)
+        logger.info(f"Using default destination path: {dest}")
+    
     source_path = Path(source).resolve()
     dest_path = Path(dest).resolve()
     logger.info(f"Starting IR generation from source: {source}")
@@ -394,7 +425,16 @@ def generate_ir(source: str, dest: str, llm_provider: Optional[str] = None, llm_
     qasm_string = None
 
     # --- LLM Generation Path --- 
-    if llm_provider and llm_model:
+    if use_llm:
+        # Set default LLM provider and model if not specified
+        if not llm_provider:
+            llm_provider = "togetherai"
+            logger.info(f"Using default LLM provider: {llm_provider}")
+        
+        if not llm_model:
+            llm_model = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+            logger.info(f"Using default LLM model: {llm_model}")
+            
         logger.info(f"LLM generation requested: Provider={llm_provider}, Model={llm_model}")
         if llm_provider.lower() == "togetherai":
             try:

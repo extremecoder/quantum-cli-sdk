@@ -128,11 +128,12 @@ def setup_ir_commands(subparsers):
 
     # ir generate
     generate_parser = ir_subparsers.add_parser("generate", help="Generate IR (OpenQASM 2.0) from source code")
-    generate_parser.add_argument("--source", required=True, help="Source Python file path containing circuit definition")
-    generate_parser.add_argument("--dest", required=True, help="Destination file path for the generated OpenQASM IR")
+    generate_parser.add_argument("--source", required=False, help="Source Python file path containing circuit definition (default: source/circuits)")
+    generate_parser.add_argument("--dest", required=False, help="Destination file path for the generated OpenQASM IR (default: ir/base)")
     # Add LLM arguments
-    generate_parser.add_argument("--llm-provider", help="LLM provider to use for generation (e.g., 'togetherai')")
-    generate_parser.add_argument("--llm-model", help="Specific LLM model name to use (requires --llm-provider)")
+    generate_parser.add_argument("--use-llm", action="store_true", help="Use LLM for IR generation")
+    generate_parser.add_argument("--llm-provider", help="LLM provider to use for generation (default: 'togetherai')")
+    generate_parser.add_argument("--llm-model", help="Specific LLM model name to use (default: 'mistralai/Mixtral-8x7B-Instruct-v0.1')")
 
     # ir validate
     validate_parser = ir_subparsers.add_parser("validate", help="Validate IR file syntax and semantics")
@@ -243,12 +244,14 @@ def setup_test_commands(subparsers):
 def setup_service_commands(subparsers):
     """Setup commands for microservice management."""
     service_parser = subparsers.add_parser("service", help="Generate and test microservice wrappers")
-    service_subparsers = service_parser.add_subparsers(dest="service_cmd", help="Service command")
+    service_subparsers = service_parser.add_subparsers(dest="service_cmd", help="Service command", required=True)
 
-    # service generate (placeholder)
-    # generate_parser = service_subparsers.add_parser("generate", help="Generate microservice code from an IR file")
-    # generate_parser.add_argument("ir_file", help="Path to the input IR file (usually mitigated)")
-    # generate_parser.add_argument("--output-dir", required=True, help="Directory to save the generated microservice code")
+    # service generate
+    generate_parser = service_subparsers.add_parser("generate", help="Generate microservice code from an IR file")
+    generate_parser.add_argument("ir_file", help="Path to the input IR file (usually mitigated)")
+    generate_parser.add_argument("--output-dir", help="Directory to save the generated microservice code")
+    generate_parser.add_argument("--llm-url", help="URL to LLM service for enhanced code generation")
+    generate_parser.add_argument("--port", type=int, default=8000, help="Port number for the microservice (default: 8000)")
 
     # service test-generate (placeholder)
     # test_generate_parser = service_subparsers.add_parser("test-generate", help="Generate tests for a microservice")
@@ -689,10 +692,7 @@ def main():
     elif args.command == "test":
         handle_test_commands(args)
     elif args.command == "service":
-        # handle_service_commands(args) # Commented out
-        print(f"Command group '{args.command}' is not fully implemented yet.", file=sys.stderr)
-        parser.print_help(sys.stderr)
-        sys.exit(1)
+        handle_service_commands(args)
     elif args.command == "package":
         # handle_package_commands(args) # Commented out
         print(f"Command group '{args.command}' is not fully implemented yet.", file=sys.stderr)
@@ -747,7 +747,7 @@ def handle_ir_commands(args):
     if args.ir_cmd == "generate":
         # Pass LLM args to the generate_ir function
         if hasattr(ir_generate_mod, 'generate_ir'):
-             success = ir_generate_mod.generate_ir(args.source, args.dest, args.llm_provider, args.llm_model)
+             success = ir_generate_mod.generate_ir(args.source, args.dest, args.use_llm, args.llm_provider, args.llm_model)
              sys.exit(0 if success else 1)
         else:
              logger.error("generate_ir function not found in the corresponding module. Cannot execute command.")
@@ -926,6 +926,50 @@ def handle_analyze_commands(args):
         sys.exit(0 if success else 1)
     else:
         print(f"Command 'analyze {args.analyze_cmd}' is not implemented yet.", file=sys.stderr)
+        sys.exit(1)
+
+def handle_init_commands(args):
+    """Handle init subcommands."""
+    from .commands import init as init_mod
+    
+    if args.init_cmd == "list":
+        # List available templates
+        # For now just return with success - we only have one template 
+        print("Available templates:\n  - quantum_app: Standard Quantum Application (default)")
+        sys.exit(0)
+    elif args.init_cmd == "create":
+        # Create new project
+        if hasattr(init_mod, 'init_project'):
+            success = init_mod.init_project(
+                project_dir=args.directory,
+                overwrite=args.overwrite if hasattr(args, 'overwrite') else False
+            )
+            sys.exit(0 if success else 1)
+        else:
+            logger.error("init_project function not found in the init module. Cannot execute command.")
+            print("Error: Command implementation missing.", file=sys.stderr)
+            sys.exit(1)
+    else:
+        print(f"Error: Unknown init command '{args.init_cmd}'", file=sys.stderr)
+        sys.exit(1)
+
+def handle_service_commands(args):
+    """Handle service subcommands."""
+    if args.service_cmd == "generate":
+        from .commands import microservice
+        if hasattr(microservice, 'generate_microservice'):
+            success = microservice.generate_microservice(
+                source_file=args.ir_file,
+                dest_dir=args.output_dir,
+                llm_url=args.llm_url
+            )
+            sys.exit(0 if success else 1)
+        else:
+            logger.error("generate_microservice function not found in microservice module. Cannot execute command.")
+            print("Error: Command implementation missing.", file=sys.stderr)
+            sys.exit(1)
+    else:
+        print(f"Error: Unknown service command '{args.service_cmd}'", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":

@@ -6,7 +6,15 @@ A comprehensive command-line interface and software development kit for quantum 
 
 - [Installation](#installation)
 - [Quick Start](#quick-start)
-- [Command Overview](#command-overview)
+- [Command Reference](#command-reference)
+  - [Project Initialization](#project-initialization)
+  - [IR Generation and Management](#ir-generation-and-management)
+  - [Circuit Simulation](#circuit-simulation)
+  - [Circuit Analysis](#circuit-analysis)
+  - [Testing](#testing)
+  - [Visualization](#visualization)
+  - [Configuration and Utilities](#configuration-and-utilities)
+- [Project Structure](#project-structure)
 - [Example Usage](#example-usage)
 - [Test Suite](#test-suite)
 - [Development](#development)
@@ -22,14 +30,20 @@ pip install quantum-cli-sdk
 
 1.  **Initialize a new quantum project:**
     ```bash
-    quantum-cli init my-quantum-app
+    quantum-cli init create my-quantum-app
     cd my-quantum-app
     ```
 
 2.  **Generate IR from a Python circuit (e.g., Qiskit):**
     ```bash
-    # Assuming you have a circuit definition in source/circuits/my_circuit.py
-    quantum-cli ir generate --source source/circuits/my_circuit.py --dest ir/openqasm/my_circuit.qasm 
+    # Using default paths (source/circuits/ to ir/base/)
+    quantum-cli ir generate
+    
+    # Or with explicit paths
+    quantum-cli ir generate --source source/circuits/my_circuit.py --dest ir/openqasm/my_circuit.qasm
+    
+    # Using LLM for generation
+    quantum-cli ir generate --use-llm
     ```
 
 3.  **Simulate the circuit using Qiskit backend:**
@@ -49,63 +63,264 @@ pip install quantum-cli-sdk
 
 6.  **Visualize the circuit:**
     ```bash
-    quantum-cli visualize circuit ir/openqasm/my_circuit.qasm --output results/visualization/circuit.png
+    quantum-cli visualize circuit --source ir/openqasm/my_circuit.qasm --output results/visualization/circuit.png
     ```
 
 7.  **Visualize the simulation results:**
     ```bash
-    quantum-cli visualize results results/simulation/base/my_circuit_qiskit.json --output results/visualization/results_hist.png
+    quantum-cli visualize results --source results/simulation/base/my_circuit_qiskit.json --output results/visualization/results_hist.png
     ```
 
-8.  **Generate and run tests for a quantum circuit:**
+8.  **Analyze quantum circuit resources:**
     ```bash
-    quantum-cli test generate ir/openqasm/my_circuit.qasm --output tests/generated
-    quantum-cli test run tests/generated/run_all_tests.py
+    quantum-cli analyze resources ir/openqasm/my_circuit.qasm --output results/resource_estimation/my_circuit_resources.json --format text
     ```
 
-## Command Overview
+## Command Reference
 
-*   `quantum-cli init <project_name>`: Initializes a new quantum project structure.
-*   `quantum-cli ir generate --source <py_file> --dest <qasm_file> [--llm-provider <provider>] [--llm-model <model>]`: Generates OpenQASM 2.0 IR from a Python source file, optionally using an LLM.
-*   `quantum-cli ir validate <qasm_file> [--output <json_file>]`: Validates the syntax and structure of an OpenQASM 2.0 file.
-*   `quantum-cli security scan <qasm_file> [--output <json_file>]`: Scans an OpenQASM 2.0 file for potential security issues.
-*   `quantum-cli ir optimize --input-file <qasm_file> --output-file <optimized_qasm> [--level <0-3>]`: Optimize quantum circuit for better performance.
-*   `quantum-cli ir mitigate --input-file <qasm_file> --output-file <mitigated_qasm> --technique <technique>`: Apply error mitigation to a quantum circuit.
-*   `quantum-cli ir finetune --input-file <qasm_file> --output-file <json_file> [--hardware <ibm|aws|google>] [--search <grid|random>] [--shots <n>]`: Fine-tune a circuit for hardware-specific optimization.
-*   `quantum-cli run simulate <qasm_file> --backend <backend_name> [--output <json_file>] [--shots <n>]`: Runs a QASM circuit on a specified simulator backend (`qiskit`, `cirq`, `braket`).
-*   `quantum-cli analyze resources <qasm_file> [--output <json_file>] [--format <text|json>]`: Analyzes quantum circuit to estimate resource requirements including qubit count, gate counts, circuit depth, and estimated runtime.
-*   `quantum-cli analyze cost <qasm_file> [--resource-file <json_file>] [--output <json_file>] [--platform <all|ibm|aws|google>] [--shots <n>] [--format <text|json>]`: Estimates execution costs for running the quantum circuit on various hardware platforms.
-*   `quantum-cli analyze benchmark <qasm_file> [--output <json_file>] [--shots <n>]`: Benchmarks quantum circuit to evaluate performance metrics and compare across platforms.
-*   `quantum-cli template list`: Lists available project templates.
-*   `quantum-cli template use <template_name> --dest <destination>`: Creates files from a template.
-*   `quantum-cli visualize circuit <qasm_file> [--output <image_file>] [--style <style>]`: Visualizes a quantum circuit from a QASM file.
-*   `quantum-cli visualize results <json_file> [--output <image_file>]`: Visualizes simulation results from a JSON file.
-*   `quantum-cli test generate <qasm_file> --output <dir>`: Generates test suite for quantum circuits.
-*   `quantum-cli test run <test_file>`: Runs generated tests for quantum circuits.
-*   `quantum-cli version`: Displays the SDK version.
-*   `quantum-cli interactive`: Starts an interactive shell session.
-*   `quantum-cli config ...`: Manage configuration and profiles.
-*   `quantum-cli deps ...`: Analyze Python package dependencies.
-*   `quantum-cli marketplace ...`: Commands for interacting with the Quantum Marketplace.
-*   `quantum-cli versioning ...`: Commands for version controlling circuits.
-*   `quantum-cli share ...`: Commands for sharing circuits and results.
-*   `quantum-cli compare ...`: Compare quantum circuits.
-*   `quantum-cli find-hardware ...`: Find suitable quantum hardware.
-*   `quantum-cli jobs ...`: Manage quantum execution jobs.
+### Project Initialization
 
-*Note: Some commands listed under `marketplace`, `versioning`, `share`, `compare`, `find-hardware`, `jobs` and analysis/optimization/testing commands under `ir`, `run`, `analyze`, `test` are placeholders or under development.*
+#### `quantum-cli init list`
+List available project templates.
+
+**Output:**
+- Displays all available project templates (currently only "quantum_app")
+
+#### `quantum-cli init create [directory] [--overwrite]`
+Create a new quantum project in the specified directory.
+
+**Arguments:**
+- `directory`: Directory name for the new project (default: current directory)
+- `--overwrite`: Overwrite existing files if the directory is not empty
+
+### IR Generation and Management
+
+#### `quantum-cli ir generate [--source <py_file>] [--dest <qasm_file>] [--use-llm] [--llm-provider <provider>] [--llm-model <model>]`
+Generates OpenQASM 2.0 IR from a Python source file.
+
+**Arguments:**
+- `--source`: Source Python file path containing circuit definition (default: source/circuits)
+- `--dest`: Destination file path for the generated OpenQASM IR (default: ir/base)
+- `--use-llm`: Use LLM for IR generation
+- `--llm-provider`: LLM provider to use for generation (default: 'togetherai')
+- `--llm-model`: Specific LLM model name to use (default: 'mistralai/Mixtral-8x7B-Instruct-v0.1')
+
+#### `quantum-cli ir validate <input_file> [--output <json_file>] [--llm-url <url>]`
+Validates the syntax and structure of an OpenQASM 2.0 file.
+
+**Arguments:**
+- `input_file`: Path to the IR file to validate (e.g., .qasm) (required)
+- `--output`: Optional output file for validation results (JSON)
+- `--llm-url`: Optional URL to LLM service for enhanced validation
+
+#### `quantum-cli ir optimize --input-file <qasm_file> --output-file <optimized_qasm> [--level <0-3>] [--target-depth <depth>] [--format <format>]`
+Optimize quantum circuit for better performance.
+
+**Arguments:**
+- `--input-file`, `-i`: Path to the input OpenQASM file (required)
+- `--output-file`, `-o`: Path to save the optimized OpenQASM file
+- `--level`, `-l`: Optimization level (0=None, 1=Light, 2=Medium, 3=Heavy) (default: 2)
+- `--target-depth`, `-d`: Target circuit depth (relevant for optimization level 3)
+- `--format`: Output format for statistics (choices: 'text', 'json') (default: 'text')
+
+#### `quantum-cli ir mitigate --input-file <qasm_file> --output-file <mitigated_qasm> --technique <technique> [--params <params>] [--report]`
+Apply error mitigation to a quantum circuit.
+
+**Arguments:**
+- `--input-file`, `-i`: Path to the input OpenQASM file (usually optimized) (required)
+- `--output-file`, `-o`: Path to save the mitigated OpenQASM file (required)
+- `--technique`, `-t`: Error mitigation technique to apply (required)
+- `--params`, `-p`: JSON string with technique-specific parameters (e.g., '{"scale_factors": [1, 2, 3]}')
+- `--report`: Generate a JSON report about the mitigation process
+
+#### `quantum-cli ir finetune --input-file <qasm_file> --output-file <json_file> [--hardware <platform>] [--search <method>] [--shots <n>] [--use-hardware] [--device-id <id>] [--api-token <token>] [--max-circuits <n>] [--poll-timeout <seconds>]`
+Fine-tune circuit based on analysis results and hardware constraints.
+
+**Arguments:**
+- `--input-file`, `-i`: Path to the input IR file (usually mitigated) (required)
+- `--output-file`, `-o`: Path to save fine-tuning results (JSON) (required)
+- `--hardware`: Target hardware platform for fine-tuning (choices: "ibm", "aws", "google") (default: "ibm")
+- `--search`: Search method for hyperparameter optimization (choices: "grid", "random") (default: "random")
+- `--shots`: Number of shots for simulation during fine-tuning (default: 1000)
+- `--use-hardware`: Execute circuits on actual quantum hardware instead of simulators
+- `--device-id`: Specific hardware device ID to use (e.g., 'ibmq_manila' for IBM)
+- `--api-token`: API token for the quantum platform (if not using configured credentials)
+- `--max-circuits`: Maximum number of circuits to run on hardware (to control costs) (default: 5)
+- `--poll-timeout`: Maximum time in seconds to wait for hardware results (default: 3600)
+
+### Circuit Simulation
+
+#### `quantum-cli run simulate <qasm_file> --backend <backend> [--output <json_file>] [--shots <n>]`
+Runs a QASM circuit on a specified simulator backend.
+
+**Arguments:**
+- `qasm_file`: Path to the OpenQASM file to simulate (required)
+- `--backend`: Simulation backend to use (choices: 'qiskit', 'cirq', 'braket') (required)
+- `--output`: Optional output file for simulation results (JSON)
+- `--shots`: Number of simulation shots (default: 1024)
+
+### Circuit Analysis
+
+#### `quantum-cli analyze resources <ir_file> [--output <json_file>] [--format <format>]`
+Estimates resource requirements for a quantum circuit.
+
+**Arguments:**
+- `ir_file`: Path to the input IR file (OpenQASM) (required)
+- `--output`: Path to save resource estimation results (JSON)
+- `--format`: Output format (choices: "text", "json") (default: "text")
+
+#### `quantum-cli analyze cost <ir_file> [--resource-file <json_file>] [--output <json_file>] [--platform <platform>] [--shots <n>] [--format <format>]`
+Estimate execution cost on different platforms.
+
+**Arguments:**
+- `ir_file`: Path to the input IR file (required)
+- `--resource-file`: Path to resource estimation file (optional input)
+- `--output`: Path to save cost estimation results (JSON)
+- `--platform`: Target platform for cost estimation (choices: "all", "ibm", "aws", "google") (default: "all")
+- `--shots`: Number of shots for execution (default: 1000)
+- `--format`: Output format (choices: "text", "json") (default: "text")
+
+#### `quantum-cli analyze benchmark <ir_file> --output <json_file> [--shots <n>]`
+Benchmark circuit performance.
+
+**Arguments:**
+- `ir_file`: Path to the input IR file (required)
+- `--output`: Path to save benchmark results (JSON) (required)
+- `--shots`: Number of shots for simulation (default: 1000)
+
+### Security Analysis
+
+#### `quantum-cli security scan <ir_file> [--output <json_file>]`
+Scans an IR file for potential security issues.
+
+**Arguments:**
+- `ir_file`: Path to the IR file to scan (e.g., OpenQASM) (required)
+- `--output`: Optional output file for scan results (JSON)
+
+### Testing
+
+#### `quantum-cli test generate --input-file <ir_file> [--output-dir <dir>] [--llm-provider <provider>] [--llm-model <model>]`
+Generate test code from an IR file using LLM.
+
+**Arguments:**
+- `--input-file`, `-i`: Path to the input mitigated IR file (e.g., .qasm) (required)
+- `--output-dir`, `-o`: Directory to save the generated Python test files (default: tests/generated)
+- `--llm-provider`: LLM provider to use for test generation (e.g., 'openai', 'togetherai')
+- `--llm-model`: Specific LLM model name (requires --llm-provider)
+
+#### `quantum-cli test run <test_file> [--output <json_file>] [--simulator <simulator>] [--shots <n>]`
+Run generated test file(s).
+
+**Arguments:**
+- `test_file`: Path to the test file or directory containing tests (required)
+- `--output`: Path to save test results (JSON)
+- `--simulator`: Simulator to use for running tests (choices: "qiskit", "cirq", "braket", "all") (default: "qiskit")
+- `--shots`: Number of shots for simulation (applicable if test_file is a circuit file) (default: 1024)
+
+### Visualization
+
+#### `quantum-cli visualize circuit --source <circuit_file> [--output <image_file>] [--format <format>]`
+Visualize a quantum circuit.
+
+**Arguments:**
+- `--source`: Path to the circuit file (QASM or other supported format) (required)
+- `--output`: Output file path (e.g., .png, .txt, .html)
+- `--format`: Output format (choices: "text", "mpl", "latex", "html") (default: "mpl")
+
+#### `quantum-cli visualize results --source <results_file> [--output <image_file>] [--type <type>] [--interactive]`
+Visualize simulation or hardware results.
+
+**Arguments:**
+- `--source`: Path to the results file (JSON) (required)
+- `--output`: Output file path (e.g., .png)
+- `--type`: Type of plot (choices: "histogram", "statevector", "hinton", "qsphere") (default: "histogram")
+- `--interactive`: Show interactive plot
+
+### Configuration and Utilities
+
+#### `quantum-cli config get <path>`
+Get configuration value.
+
+**Arguments:**
+- `path`: Configuration path (e.g., 'default_parameters.run.shots') (required)
+
+#### `quantum-cli config set <path> <value>`
+Set configuration value.
+
+**Arguments:**
+- `path`: Configuration path (e.g., 'default_parameters.run.shots') (required)
+- `value`: Configuration value (required)
+
+#### `quantum-cli interactive`
+Starts an interactive shell session for running quantum commands.
+
+## Project Structure
+
+When you initialize a new project using `quantum-cli init create <project_name>`, the following directory structure is created:
+
+```
+my-quantum-app/                  # Your project root directory
+├── .github/
+│   └── workflows/               # CI/CD pipeline definitions
+│       └── e2e-pipeline.yml     # End-to-end quantum pipeline workflow
+│
+├── dist/                        # Default output directory for packaged applications
+│
+├── ir/
+│   └── openqasm/                # Stores Intermediate Representation (OpenQASM) files
+│       ├── *.qasm               # Base IR generated from source
+│       ├── optimized/           # Optimized IR
+│       └── mitigated/           # Error-mitigated IR
+│
+├── results/                     # Contains output data from various pipeline stages
+│   ├── validation/              # Validation results (quantum-cli ir validate)
+│   ├── security/                # Security scan reports (quantum-cli security scan)
+│   ├── simulation/              # Simulation results (quantum-cli run simulate)
+│   │   ├── base/                # Raw simulation results
+│   │   ├── optimized/           # Simulation of optimized circuits
+│   │   └── mitigated/           # Simulation of error-mitigated circuits
+│   │
+│   ├── analysis/                # Circuit analysis results
+│   │   ├── resources/           # Resource estimation (quantum-cli analyze resources)
+│   │   ├── cost/                # Cost estimation (quantum-cli analyze cost)
+│   │   ├── benchmark/           # Benchmarking results (quantum-cli analyze benchmark)
+│   │   └── finetuning/          # Fine-tuning results (quantum-cli ir finetune)
+│   │
+│   └── tests/                   # Test execution results
+│       ├── unit/                # Unit test results (quantum-cli test run)
+│       └── service/             # Service test results
+│
+├── services/                    # Contains generated microservice code and tests
+│   └── generated/               # Base dir for generated services
+│
+├── source/
+│   └── circuits/                # Location for your original quantum circuit source files
+│
+├── tests/
+│   └── generated/               # Contains generated test code
+│
+├── .gitignore                   # Standard gitignore file for Python/quantum projects
+├── README.md                    # Project description and documentation
+└── requirements.txt             # Project dependencies
+```
+
+This structure is designed to work seamlessly with the Quantum CLI SDK commands and provides a standard layout for organizing your quantum computing projects.
 
 ## Example Usage
 
 1.  **Initialize a new project:**
     ```bash
-    quantum-cli init my-quantum-app
+    quantum-cli init create my-quantum-app
     cd my-quantum-app
     ```
 
 2.  **Generate IR from a Python circuit (e.g., Qiskit):**
     ```bash
-    quantum-cli ir generate --source source/circuits/my_circuit.py --dest ir/openqasm/my_circuit.qasm 
+    quantum-cli ir generate
+    
+    quantum-cli ir generate --source source/circuits/my_circuit.py --dest ir/openqasm/my_circuit.qasm
+    
+    quantum-cli ir generate --use-llm
     ```
 
 3.  **Generate IR using an LLM (Together AI example):**
@@ -141,12 +356,12 @@ pip install quantum-cli-sdk
 
 9.  **Visualize the circuit:**
     ```bash
-    quantum-cli visualize circuit ir/openqasm/my_circuit.qasm --output results/visualization/circuit.png
+    quantum-cli visualize circuit --source ir/openqasm/my_circuit.qasm --output results/visualization/circuit.png
     ```
 
 10. **Visualize the simulation results:**
     ```bash
-    quantum-cli visualize results results/simulation/base/my_circuit_qiskit.json --output results/visualization/results_hist.png
+    quantum-cli visualize results --source results/simulation/base/my_circuit_qiskit.json --output results/visualization/results_hist.png
     ```
 
 11. **Analyze quantum circuit resources:**
@@ -169,20 +384,19 @@ pip install quantum-cli-sdk
 
 14. **Generate tests for a quantum circuit:**
     ```bash
-    quantum-cli test generate ir/openqasm/my_circuit.qasm --output tests/generated
+    quantum-cli test generate --input-file ir/openqasm/my_circuit.qasm --output-dir tests/generated
     ```
 
 15. **Run generated tests:**
     ```bash
-    cd my-quantum-app
-    python tests/generated/run_all_tests.py
+    quantum-cli test run tests/generated/run_all_tests.py
     ```
 
 16. **Fine-tune circuit for hardware-specific optimization:**
     ```bash
     quantum-cli ir finetune --input-file ir/openqasm/mitigated/my_circuit_mitigated.qasm --output-file results/analysis/finetuning/my_circuit_finetuned.json --hardware ibm --search random --shots 1024
     ```
-    This command fine-tunes a quantum circuit for specific hardware targets, using hyperparameter optimization to find the best transpiler settings, optimization levels, and other hardware-specific parameters. Results include recommended parameters and performance improvement metrics.
+    This command fine-tunes a quantum circuit for specific hardware targets, using hyperparameter optimization to find the best transpiler settings, optimization levels, and other hardware-specific parameters.
 
 ## Test Suite
 
@@ -215,17 +429,6 @@ All generated tests are compatible with Qiskit 1.0+, with specific updates to:
 3. Support new simulation and visualization methods
 4. Properly handle qubit indexing and register manipulation
 
-### Example: Shor's Algorithm Test Suite
-
-The repository includes a complete test suite for Shor's factoring algorithm:
-
-- Tests verify correct period finding for factoring N=15
-- Validates quantum correlations in the output
-- Checks circuit behavior under noise and perturbations
-- Ensures correct circuit structure (gate count, depth, measurements)
-
-For details, see the example in `my-cli-test-app/tests/generated/README.md`.
-
 ## Development
 
 To set up the development environment:
@@ -248,94 +451,3 @@ pytest
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Commands
-
-The Quantum CLI SDK supports the following commands:
-
-### IR Commands
-
-The following commands operate on IR files:
-
-- `ir finetune`: Fine-tune a quantum circuit for hardware-specific optimization
-  - `--input-file`: Path to the input OpenQASM file
-  - `--output-file`: Path to save the fine-tuning results (JSON)
-  - `--hardware`: Target hardware platform (ibm, aws, google)
-  - `--search-method`: Search method (grid or random)
-  - `--shots`: Base number of shots for simulation
-  - `--use-hardware`: Enable execution on actual quantum hardware
-  - `--device-id`: Specific hardware device ID to use
-  - `--api-token`: API token for the quantum platform
-  - `--max-circuits`: Maximum number of circuits to run on hardware (default: 5)
-  - `--poll-timeout`: Maximum time in seconds to wait for hardware results (default: 3600)
-
-## Fine-tuning
-
-Fine-tuning is a process of optimizing the transpiler and hardware-specific parameters for a given quantum circuit to improve its performance on a specific quantum hardware platform. Unlike training machine learning models, quantum circuit fine-tuning focuses on finding the optimal configuration of the toolchain that converts your high-level circuit to the hardware's native gates and topology.
-
-### How Fine-tuning Works
-
-1. **Parameter space definition**: The system defines ranges for hardware-specific parameters such as:
-   - Optimization level (0-3)
-   - Layout method (sabre, dense, noise_adaptive, etc.)
-   - Routing method (basic, lookahead, stochastic, etc.)
-   - Scheduling method (asap, alap)
-   - Transpiler seed values
-
-2. **Parameter exploration**: The fine-tuner explores this space using either:
-   - Grid search: Systematically trying parameter combinations
-   - Random search: Randomly sampling parameter combinations
-
-3. **Execution and evaluation**: For each parameter set, the system:
-   - Runs the circuit (either on a simulator or real hardware if `--use-hardware` is specified)
-   - Calculates performance metrics (entropy of results, unique outcomes, etc.)
-   - Ranks the parameter sets based on performance
-
-4. **Baseline comparison**: The best parameter set is compared against a baseline run with default parameters to quantify the improvement.
-
-5. **Results output**: The system outputs the optimal parameters and their impact on performance.
-
-When using simulators, we can explore more parameter combinations. With real hardware (using the `--use-hardware` flag), the system limits exploration to the number specified in `--max-circuits` to control costs and execution time.
-
-The main difference between simulator-based and hardware-based fine-tuning is that hardware-based fine-tuning provides more accurate results for actual quantum hardware but at higher cost and longer execution times.
-
-### Example Usage
-
-```bash
-# Fine-tune using simulator
-quantum-cli ir finetune --input-file circuit.qasm --output-file results.json --hardware ibm --search-method random
-
-# Fine-tune using actual hardware
-quantum-cli ir finetune --input-file circuit.qasm --output-file results.json --hardware ibm --search-method random --use-hardware --max-circuits 5
-```
-
-## Hardware Execution
-
-The CLI supports running quantum circuits on actual quantum hardware from IBM Quantum, Google Quantum, and AWS Braket. To use this feature:
-
-1. Install the appropriate SDK:
-   - IBM Quantum: `pip install qiskit qiskit-ibmq-provider`
-   - Google Quantum: `pip install cirq cirq-google`
-   - AWS Braket: `pip install amazon-braket-sdk`
-
-2. Set up your credentials:
-   - IBM Quantum: Configure with `qiskit-ibmq-provider` or provide API token
-   - Google Quantum: Set up Google Cloud authentication
-   - AWS Braket: Configure AWS credentials through AWS CLI or environment variables
-
-3. Use the `--use-hardware` flag with commands that support hardware execution:
-   ```
-   quantum-cli ir finetune --input-file circuit.qasm --output-file results.json --hardware ibm --use-hardware --device-id ibmq_manila
-   ```
-
-Hardware execution is supported for the following commands:
-- `ir finetune`: Run fine-tuning on actual quantum hardware
-- `ir run`: Run a circuit on quantum hardware
-
-When using hardware execution, consider the following:
-- Running on real hardware may incur costs depending on your provider
-- Hardware execution is significantly slower than simulation
-- The `--max-circuits` parameter limits the number of circuits to run on hardware
-- The `--poll-timeout` parameter sets the maximum time to wait for results
-
-For fine-tuning on hardware, the CLI automatically limits the number of parameter combinations to evaluate based on the `--max-circuits` setting to prevent excessive hardware usage.

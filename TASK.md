@@ -30,7 +30,7 @@ Generate tests using llm such a way that it tests the generated ir code from eve
 19. [ ] 2024-02-10: Create comprehensive benchmarking suite
 
 ### Phase 3: Deployment Capabilities
-20. [ ] 2024-02-15: Implement `service generate` command for microservice generation (Aligned with pipeline)
+20. [x] 2024-05-16: Implement `service generate` command for microservice generation (Aligned with pipeline)
 21. [ ] 2024-02-25: Implement `service test-generate` command for microservice test generation (Aligned with pipeline)
 22. [ ] 2024-03-05: Implement `service test-run` command for running microservice tests (Aligned with pipeline)
 23. [ ] 2024-03-15: Implement `package create` command for application bundling (Aligned with pipeline)
