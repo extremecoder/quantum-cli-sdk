@@ -8,6 +8,11 @@ import sys
 import json # Added for parsing API response
 import requests # Added for making API calls
 from pathlib import Path
+import subprocess # Added for test runner subprocess management
+import time # Added for timestamping
+
+# Import the test functionality
+from ..test_framework import run_tests as framework_run_tests
 
 logger = logging.getLogger(__name__)
 
@@ -364,6 +369,165 @@ def generate_tests(input_file: str, output_dir: str, llm_provider: str | None = 
 
     print(f"Successfully generated test file using Together AI: {output_file_path}")
     return True
+
+def run_tests(test_file: str, output_file: str = None, simulator: str = "qiskit", shots: int = 1024) -> bool:
+    """
+    Run tests for quantum circuits.
+    
+    This function implements the 'quantum-cli test run' command by leveraging
+    the existing test functionality from commands/test.py.
+    
+    Args:
+        test_file (str): Path to the test file or directory containing tests
+        output_file (str, optional): Path to save test results (JSON)
+        simulator (str): Simulator to use if test_file is a circuit file (qiskit, cirq, braket, or all)
+        shots (int): Number of shots for simulation if test_file is a circuit file
+        
+    Returns:
+        bool: True if all tests passed, False otherwise
+    """
+    logger.info(f"Running tests from: {test_file}")
+    
+    # Determine if this is a pytest directory, a single pytest file,
+    # or a quantum circuit file for direct simulation
+    test_path = Path(test_file)
+    
+    # Set default output path if not provided, relative to the application being tested
+    if not output_file:
+        # Get the base directory (app directory) from the test file path
+        if test_path.is_dir():
+            app_base_dir = test_path.parent.parent  # Assuming tests are in app/tests/
+        else:
+            # For a file, get the application root dir (two levels up from test file)
+            app_base_dir = test_path.parent.parent.parent  # Assuming file is in app/tests/generated/
+            
+        # Create the results directory structure within the application directory
+        output_dir = app_base_dir / "results" / "tests" / "unit"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Use the stem of the test file or directory as the base name
+        if test_path.is_dir():
+            base_name = test_path.name
+        else:
+            base_name = test_path.stem
+            
+        output_file = str(output_dir / f"{base_name}_results.json")
+        logger.info(f"Results will be saved to: {output_file}")
+    
+    if test_path.is_dir() or (test_path.is_file() and test_path.suffix == '.py'):
+        # This is a pytest file or directory
+        logger.info(f"Running pytest tests from: {test_file}")
+        
+        try:
+            # Prepare pytest command
+            cmd = ["pytest", "-v", str(test_path)]
+            
+            # Run pytest
+            logger.info(f"Executing: {' '.join(cmd)}")
+            process = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            # Prepare results
+            success = process.returncode == 0
+            
+            # Construct test results
+            results = {
+                "success": success,
+                "exit_code": process.returncode,
+                "stdout": process.stdout,
+                "stderr": process.stderr if process.stderr else None,
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "test_path": str(test_path)
+            }
+            
+            # Save results if output file is specified
+            output_path = Path(output_file)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(output_path, 'w') as f:
+                json.dump(results, f, indent=2)
+                
+            logger.info(f"Test results saved to: {output_file}")
+            
+            # Print summary
+            if success:
+                print(f"Tests passed: {test_file}")
+            else:
+                print(f"Tests failed: {test_file}")
+                
+            return success
+            
+        except Exception as e:
+            logger.error(f"Error running tests: {e}")
+            
+            # Attempt to save error information
+            try:
+                error_results = {
+                    "success": False,
+                    "error": str(e),
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "test_path": str(test_path)
+                }
+                
+                output_path = Path(output_file)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                with open(output_path, 'w') as f:
+                    json.dump(error_results, f, indent=2)
+            except Exception as write_err:
+                logger.error(f"Failed to write error results: {write_err}")
+                
+            return False
+            
+    elif test_path.is_file() and test_path.suffix in ['.qasm', '.json']:
+        # This is a quantum circuit file for direct simulation
+        logger.info(f"Running circuit simulation test with {simulator} on: {test_file}")
+        
+        try:
+            # Import the test functionality from the built-in test.py module
+            from ..commands.test import run_simulator_test
+            
+            # Run simulation test
+            success = run_simulator_test(simulator, str(test_path), output_file, shots)
+            
+            if success:
+                print(f"Circuit simulation test passed: {test_file}")
+            else:
+                print(f"Circuit simulation test failed: {test_file}")
+                
+            return success
+            
+        except Exception as e:
+            logger.error(f"Error running circuit simulation test: {e}")
+            
+            # Attempt to save error information
+            try:
+                error_results = {
+                    "success": False,
+                    "simulator": simulator,
+                    "shots": shots,
+                    "error": str(e),
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "circuit_path": str(test_path)
+                }
+                
+                output_path = Path(output_file)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                with open(output_path, 'w') as f:
+                    json.dump(error_results, f, indent=2)
+            except Exception as write_err:
+                logger.error(f"Failed to write error results: {write_err}")
+                
+            return False
+    else:
+        logger.error(f"Invalid test file: {test_file}. Must be a .py, .qasm, or .json file, or a directory.")
+        print(f"Error: Invalid test file: {test_file}. Must be a .py, .qasm, or .json file, or a directory.", file=sys.stderr)
+        return False
 
 # Keep the __main__ block for potential direct testing/debugging if needed
 if __name__ == "__main__":

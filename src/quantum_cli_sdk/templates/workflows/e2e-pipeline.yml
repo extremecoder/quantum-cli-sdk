@@ -561,10 +561,10 @@ jobs:
           RESULT_FILE="results/tests/unit/${{ matrix.source_file }}.json"
 
           if [ -f "$TEST_FILE" ]; then
-            # Direct pytest execution since quantum-cli test run is not yet implemented
-            pytest "$TEST_FILE" -v || echo "Pytest failed for $TEST_FILE"
-            # Create a basic JSON result since we don't have the quantum-cli test run command yet
-            echo "{\"status\": \"complete\", \"file\": \"$TEST_FILE\", \"timestamp\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"}" > "$RESULT_FILE"
+            # Use our newly implemented test run command
+            quantum-cli test run \
+              "$TEST_FILE" \
+              --output "$RESULT_FILE"
             echo "Ran unit tests for ${{ matrix.source_file }}"
           else
             echo "Skipping unit tests, test file not found: $TEST_FILE"

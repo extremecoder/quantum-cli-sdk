@@ -231,11 +231,14 @@ def setup_test_commands(subparsers):
     generate_parser.add_argument("--llm-provider", help="LLM provider to use for test generation (e.g., 'openai', 'togetherai')")
     generate_parser.add_argument("--llm-model", help="Specific LLM model name (requires --llm-provider)")
 
-    # test run (placeholder - keep commented for now)
-    # run_parser = test_subparsers.add_parser("run", help="Run generated test file(s)")
-    # run_parser.add_argument("test_file", help="Path to the generated test file (or directory)")
-    # run_parser.add_argument("--output", required=True, help="Path to save test results (JSON)")
-    # Add test runner options (e.g., pytest args) later
+    # test run - implemented based on existing test function
+    run_parser = test_subparsers.add_parser("run", help="Run generated test file(s)")
+    run_parser.add_argument("test_file", help="Path to the test file or directory containing tests")
+    run_parser.add_argument("--output", help="Path to save test results (JSON)")
+    run_parser.add_argument("--simulator", choices=["qiskit", "cirq", "braket", "all"], default="qiskit", 
+                           help="Simulator to use for running tests (applicable if test_file is a circuit file)")
+    run_parser.add_argument("--shots", type=int, default=1024, 
+                           help="Number of shots for simulation (applicable if test_file is a circuit file)")
 
 def setup_service_commands(subparsers):
     """Setup commands for microservice management."""
@@ -837,7 +840,19 @@ def handle_test_commands(args):
             logger.error("generate_tests function not found in test_generate_mod. Cannot execute command.")
             print("Error: Command implementation missing.", file=sys.stderr)
             sys.exit(1)
-    # Add handlers for other test commands (e.g., test run) when implemented
+    elif args.test_cmd == "run":
+        if hasattr(test_generate_mod, 'run_tests'):
+            success = test_generate_mod.run_tests(
+                test_file=args.test_file,
+                output_file=args.output,
+                simulator=args.simulator,
+                shots=args.shots
+            )
+            sys.exit(0 if success else 1)
+        else:
+            logger.error("run_tests function not found in test_generate_mod. Cannot execute command.")
+            print("Error: Command implementation missing.", file=sys.stderr)
+            sys.exit(1)
     else:
         print(f"Error: Unknown test command '{args.test_cmd}'", file=sys.stderr)
         # Consider finding the parent parser to print help for the 'test' command
