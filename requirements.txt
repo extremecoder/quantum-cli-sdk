@@ -57,3 +57,9 @@ pandas>=1.5.0   # For data handling and analysis
 
 # Add the Together AI client library
 together
+
+# Microservice dependencies
+fastapi>=0.100.0 # Choose appropriate version specifier
+uvicorn[standard]>=0.23.0
+pydantic>=2.0.0
+cirq-qasm>=1.4.1 # Align with cirq version if possible

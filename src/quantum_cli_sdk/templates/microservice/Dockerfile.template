@@ -1,0 +1,24 @@
+FROM ${quantum_docker_image}
+WORKDIR /sdk_build
+
+# Copy essentials for SDK installation from project root
+COPY src ./src
+COPY pyproject.toml .
+COPY README.md .
+
+# Install the SDK itself from the current build context (project root)
+RUN pip install --no-cache-dir -v .
+
+# Now setup the final runtime environment in /app
+WORKDIR /app
+# Copy generated files from their location relative to project root
+COPY my-cli-test-app/services/generated/microservice/app.py .
+COPY my-cli-test-app/services/generated/microservice/requirements.txt .
+COPY my-cli-test-app/services/generated/microservice/circuits ./circuits
+COPY my-cli-test-app/services/generated/microservice/quantum_manifest.json .
+
+# Install the microservice-specific requirements
+RUN pip install --no-cache-dir -r requirements.txt
+
+EXPOSE ${port}
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "${port}", "--workers", "1"]

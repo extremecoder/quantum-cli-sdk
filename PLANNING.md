@@ -21,7 +21,6 @@ Implementation of the Quantum CLI SDK component within the broader Quantum Ecosy
 - Container-based deployment for microservices
 
 ## Constraints
-- Cross-platform compatibility (Linux, macOS, Windows)
 - Python 3.10+ dependency
 - Limited by capabilities of underlying quantum frameworks
 - Hardware access dependent on Quantum Hub integration

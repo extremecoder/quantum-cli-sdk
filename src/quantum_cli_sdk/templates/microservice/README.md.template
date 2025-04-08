@@ -1,0 +1,90 @@
+# ${app_name}
+
+${app_description}
+
+Version: ${app_version}
+Generated: ${generated_date}
+Author: ${author}
+License: ${license_info}
+
+## Overview
+
+This is a microservice wrapper providing a REST API for the following quantum circuit:
+
+${circuit_documentation}
+
+It runs the circuit on various simulators. By default, it uses the circuit bundled with the service (`circuits/${default_circuit_filename}`), but you can provide a different QASM string in the `/run` request body.
+
+## API Endpoints
+
+- `GET /`: Basic service info.
+- `GET /health`: Health check and available simulators.
+- `POST /run`: Submit a job.
+  - **Body (JSON):**
+    - `circuit` (Optional[str]): QASM string. Uses bundled default if omitted.
+    - `parameters` (Optional[Dict]): Circuit parameters (key-value pairs). Basic substitution is used.
+    - `shots` (int): Number of shots (default: 1024).
+    - `simulator` (str): 'qiskit', 'cirq', or 'braket' (default: 'qiskit').
+    - `blocking` (bool): Wait for results (true) or return job ID immediately.
+- `GET /jobs/{job_id}`: Get job status.
+- `GET /jobs/{job_id}/results`: Get job results.
+- `GET /jobs`: List all submitted job summaries.
+- `DELETE /jobs/{job_id}`: Delete a job and its files.
+
+## Running the Service
+
+### Using Docker (Recommended)
+
+```bash
+# Build the Docker image (from the service directory)
+docker build -t ${app_name} .
+
+# Run the container
+docker run -p ${port}:${port} --rm --name ${app_name}-container ${app_name}
+```
+
+### Without Docker
+
+```bash
+# Navigate to the service directory
+cd <path_to_service_directory>
+
+# Install dependencies (uses pinned versions from project)
+pip install -r requirements.txt
+
+# Run the service (use environment variable for port if needed)
+# PORT=${port} uvicorn app:app --host 0.0.0.0 --port ${port}
+uvicorn app:app --host 0.0.0.0 --port ${port}
+```
+
+## API Usage Example
+
+```bash
+# Health check
+curl http://localhost:${port}/health
+
+# Run default bundled circuit (non-blocking)
+curl -X POST http://localhost:${port}/run \
+  -H "Content-Type: application/json" \
+  -d '{
+    "shots": 2048,
+    "simulator": "qiskit"
+  }'
+# (Note the returned job_id)
+
+# Provide a specific small circuit (blocking)
+curl -X POST http://localhost:${port}/run \
+  -H "Content-Type: application/json" \
+  -d '{
+    "circuit": "OPENQASM 2.0;\\ninclude \"qelib1.inc\";\\nqreg q[1];\\ncreg c[1];\\nh q[0];\\nmeasure q[0] -> c[0];",
+    "shots": 100,
+    "simulator": "cirq",
+    "blocking": true
+  }'
+
+# Check job status (replace JOB_ID with actual ID from non-blocking run)
+# curl http://localhost:${port}/jobs/YOUR_JOB_ID
+
+# Get job results
+# curl http://localhost:${port}/jobs/YOUR_JOB_ID/results
+```

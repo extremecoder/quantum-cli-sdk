@@ -247,22 +247,32 @@ def setup_service_commands(subparsers):
     service_subparsers = service_parser.add_subparsers(dest="service_cmd", help="Service command", required=True)
 
     # service generate
-    generate_parser = service_subparsers.add_parser("generate", help="Generate microservice code from an IR file")
-    generate_parser.add_argument("ir_file", help="Path to the input IR file (usually mitigated)")
-    generate_parser.add_argument("--output-dir", help="Directory to save the generated microservice code")
+    generate_parser = service_subparsers.add_parser("generate", help="Generate microservice code from an IR file or zip package")
+    generate_parser.add_argument("input_file", nargs='?', default=None, help="Path to the input IR file (QASM) or ZIP package. If omitted, searches in ir/openqasm/mitigated/")
+    generate_parser.add_argument("--output-dir", help="Directory to save the generated microservice code (default: services/generated/<basename>)")
     generate_parser.add_argument("--llm-url", help="URL to LLM service for enhanced code generation")
     generate_parser.add_argument("--port", type=int, default=8000, help="Port number for the microservice (default: 8000)")
+    generate_parser.add_argument("--app-root", help="Root directory of the application (default: current directory)")
+    generate_parser.add_argument("--base-image", help="Custom Docker base image to use (default: quantum-cli-sdk/microservice-base:latest)")
+
+    # service run (new command for running a microservice)
+    run_parser = service_subparsers.add_parser("run", help="Run a generated microservice locally")
+    run_parser.add_argument("service_dir", help="Path to the generated microservice directory")
+    run_parser.add_argument("--port", type=int, default=8000, help="Port number for the microservice (default: 8000)")
+    run_parser.add_argument("--use-docker", action="store_true", help="Run the service using Docker")
+    run_parser.add_argument("--detach", action="store_true", help="Run the service in detached mode (background)")
 
     # service test-generate (placeholder)
-    # test_generate_parser = service_subparsers.add_parser("test-generate", help="Generate tests for a microservice")
-    # test_generate_parser.add_argument("service_dir", help="Path to the generated microservice directory")
-    # test_generate_parser.add_argument("--output", required=True, help="Directory to save the generated service tests (e.g., service_dir/tests)")
+    test_generate_parser = service_subparsers.add_parser("test-generate", help="Generate tests for a microservice")
+    test_generate_parser.add_argument("service_dir", help="Path to the generated microservice directory")
+    test_generate_parser.add_argument("--output", help="Directory to save the generated service tests (e.g., service_dir/tests)")
 
     # service test-run (placeholder)
-    # test_run_parser = service_subparsers.add_parser("test-run", help="Run tests for a microservice (requires Docker)")
-    # test_run_parser.add_argument("service_dir", help="Path to the generated microservice directory")
-    # test_run_parser.add_argument("--test-dir", required=True, help="Path to the directory containing service tests")
-    # test_run_parser.add_argument("--output", required=True, help="Path to save service test results (JSON)")
+    test_run_parser = service_subparsers.add_parser("test-run", help="Run tests for a microservice (requires Docker)")
+    test_run_parser.add_argument("service_dir", help="Path to the generated microservice directory")
+    test_run_parser.add_argument("--test-dir", help="Path to the directory containing service tests")
+    test_run_parser.add_argument("--output", help="Path to save service test results (JSON)")
+    test_run_parser.add_argument("--blocking", action="store_true", help="Run in blocking mode (wait for completion)")
 
 def setup_package_commands(subparsers):
     """Setup commands for application packaging."""
@@ -692,6 +702,7 @@ def main():
     elif args.command == "test":
         handle_test_commands(args)
     elif args.command == "service":
+        # Restore the call to the service command handler
         handle_service_commands(args)
     elif args.command == "package":
         # handle_package_commands(args) # Commented out
@@ -957,17 +968,148 @@ def handle_service_commands(args):
     """Handle service subcommands."""
     if args.service_cmd == "generate":
         from .commands import microservice
+        
+        # First ensure templates are set up
+        if hasattr(microservice, 'setup_microservice_templates'):
+            microservice.setup_microservice_templates()
+        
+        # Create base Docker image if needed and the function exists
+        if hasattr(microservice, 'create_base_docker_image'):
+            microservice.create_base_docker_image()
+        
+        # Generate the microservice
         if hasattr(microservice, 'generate_microservice'):
+            # Determine app root directory
+            app_root = os.path.abspath(args.app_root) if hasattr(args, 'app_root') and args.app_root else os.getcwd()
+            logger.info(f"Using application root: {app_root}") # Log the determined app root
+            
+            # Parse output directory - Let generate_microservice handle the default
+            output_dir = args.output_dir
+            # Remove the block that calculates default output_dir based on args.input_file
+            # if not output_dir:
+            #     # Default to services/generated/<basename> relative to app root
+            #     basename = os.path.splitext(os.path.basename(args.input_file))[0]
+            #     output_dir = os.path.join(app_root, "services", "generated", basename)
+            
+            # Set custom Docker base image if provided
+            if hasattr(args, 'base_image') and args.base_image:
+                microservice.QUANTUM_DOCKER_IMAGE = args.base_image
+            
+            # Generate the microservice
             success = microservice.generate_microservice(
-                source_file=args.ir_file,
-                dest_dir=args.output_dir,
-                llm_url=args.llm_url
+                source_file=args.input_file, # Correct: pass the value from the parsed args
+                dest_dir=output_dir, # Pass None if omitted, function will handle default
+                llm_url=args.llm_url,
+                port=args.port,
+                app_root=app_root # Explicitly pass the determined app_root
             )
+            
+            if success:
+                # Read the final destination directory from the function if needed, or rely on its logging
+                logger.info(f"Microservice generation initiated.") # Changed log message slightly
+                print(f"Microservice generation initiated.") # Changed print message slightly
+            
             sys.exit(0 if success else 1)
         else:
             logger.error("generate_microservice function not found in microservice module. Cannot execute command.")
             print("Error: Command implementation missing.", file=sys.stderr)
             sys.exit(1)
+    
+    elif args.service_cmd == "run":
+        # Run the microservice either with Docker or directly
+        if hasattr(args, 'use_docker') and args.use_docker:
+            # Run with Docker
+            from ..utils import run_docker_command
+            
+            service_dir = os.path.abspath(args.service_dir)
+            if not os.path.exists(service_dir):
+                logger.error(f"Service directory not found: {service_dir}")
+                print(f"Error: Service directory not found: {service_dir}", file=sys.stderr)
+                sys.exit(1)
+            
+            # Build the Docker image
+            image_name = f"quantum-service-{os.path.basename(service_dir)}"
+            build_cmd = ["build", "-t", image_name, service_dir]
+            if not run_docker_command(build_cmd):
+                logger.error("Failed to build Docker image")
+                print("Error: Failed to build Docker image", file=sys.stderr)
+                sys.exit(1)
+            
+            # Run the Docker container
+            port = args.port if hasattr(args, 'port') else 8000
+            run_cmd = ["run", "-p", f"{port}:{port}"]
+            
+            if hasattr(args, 'detach') and args.detach:
+                run_cmd.append("-d")
+            
+            run_cmd.extend([image_name])
+            
+            if not run_docker_command(run_cmd):
+                logger.error("Failed to run Docker container")
+                print("Error: Failed to run Docker container", file=sys.stderr)
+                sys.exit(1)
+            
+            print(f"Microservice running at http://localhost:{port}")
+        else:
+            # Run directly with uvicorn
+            import subprocess
+            
+            service_dir = os.path.abspath(args.service_dir)
+            if not os.path.exists(service_dir):
+                logger.error(f"Service directory not found: {service_dir}")
+                print(f"Error: Service directory not found: {service_dir}", file=sys.stderr)
+                sys.exit(1)
+            
+            # Change to the service directory
+            os.chdir(service_dir)
+            
+            # Check for requirements.txt and install if needed
+            if os.path.exists("requirements.txt"):
+                subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], check=True)
+            
+            # Run with uvicorn
+            port = args.port if hasattr(args, 'port') else 8000
+            cmd = [sys.executable, "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", str(port)]
+            
+            if hasattr(args, 'detach') and args.detach:
+                # Run in background
+                subprocess.Popen(cmd, cwd=service_dir)
+                print(f"Microservice running in background at http://localhost:{port}")
+            else:
+                # Run in foreground
+                print(f"Starting microservice at http://localhost:{port}")
+                subprocess.run(cmd, cwd=service_dir)
+    
+    elif args.service_cmd == "test-generate":
+        from .commands import generate_microservice_tests
+        
+        if hasattr(generate_microservice_tests, 'generate_microservice_tests'):
+            success = generate_microservice_tests.generate_microservice_tests(
+                microservice_dir=args.service_dir,
+                output_dir=args.output
+            )
+            sys.exit(0 if success else 1)
+        else:
+            logger.error("generate_microservice_tests function not found. Cannot execute command.")
+            print("Error: Command implementation missing.", file=sys.stderr)
+            sys.exit(1)
+    
+    elif args.service_cmd == "test-run":
+        from .commands import run_microservice_tests
+        
+        if hasattr(run_microservice_tests, 'run_microservice_tests'):
+            success = run_microservice_tests.run_microservice_tests(
+                microservice_dir=args.service_dir,
+                test_dir=args.test_dir,
+                output_file=args.output,
+                blocking=args.blocking if hasattr(args, 'blocking') else False
+            )
+            sys.exit(0 if success else 1)
+        else:
+            logger.error("run_microservice_tests function not found. Cannot execute command.")
+            print("Error: Command implementation missing.", file=sys.stderr)
+            sys.exit(1)
+    
     else:
         print(f"Error: Unknown service command '{args.service_cmd}'", file=sys.stderr)
         sys.exit(1)
