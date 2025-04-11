@@ -485,7 +485,7 @@ def finetune(source_file, dest_file=None, hyperparameter=None, parameters=None, 
     return True
 
 def finetune_circuit(input_file, output_file, hardware="ibm", search_method="random", shots=1000,
-                   use_hardware=False, device_id=None, api_token=None, max_circuits=5, poll_timeout=3600):
+                   use_hardware=False, device_id=None, api_token=None, max_circuits=1, poll_timeout=3600):
     """
     Fine-tune a quantum circuit for hardware-specific optimization.
     

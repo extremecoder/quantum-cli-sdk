@@ -436,7 +436,7 @@ This structure is designed to work seamlessly with the Quantum CLI SDK commands 
 
 10. **Mitigate errors:**
     ```bash
-    quantum-cli ir mitigate --input-file ir/openqasm/optimized/my_circuit.qasm --output-file ir/openqasm/mitigated/my_circuit.qasm --technique zero_noise_extrapolation
+    quantum-cli ir mitigate --input-file ir/openqasm/optimized/my_circuit.qasm --output-file ir/openqasm/mitigated/my_circuit.qasm --technique zne
     ```
 
 11. **Visualize the mitigated circuit:**
@@ -478,9 +478,17 @@ This structure is designed to work seamlessly with the Quantum CLI SDK commands 
     ```
 
 18. **Fine-tune circuit for hardware-specific optimization (using mitigated circuit):**
+    
+    Running on simulator
     ```bash
     quantum-cli ir finetune --input-file ir/openqasm/mitigated/my_circuit.qasm --output-file results/analysis/finetuning/my_circuit_finetuned.json --hardware ibm --search random --shots 1024
     ```
+
+    Running on hardware
+    ```bash
+    quantum-cli ir finetune --input-file ir/openqasm/mitigated/my_circuit.qasm --output-file results/analysis/finetuning/my_circuit_finetuned.json --hardware ibm --search random --shots 1024 --use-hardware --device-id ibmq_manila
+    ```
+
     This command fine-tunes a quantum circuit for specific hardware targets, using hyperparameter optimization to find the best transpiler settings, optimization levels, and other hardware-specific parameters.
 
 19. **Generate Microservice (using mitigated circuit):**

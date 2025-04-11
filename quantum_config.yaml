@@ -1,72 +1,53 @@
-# Quantum CLI SDK - Configuration File
-
-# Active profile
+plugin_paths:
+- examples/plugins
+- ~/.quantum-cli/plugins
+- /Users/atamrak1/dev/rnd/quantum/quantum-cli-sdk
 profile: dev
-
-# Profiles for different environments
 profiles:
-  # Development profile
+  benchmark:
+    caching: false
+    log_level: INFO
+    optimization_level: 0
+    shots: 1000
+    simulator: all
+    validate_circuits: false
   dev:
-    simulator: qiskit
-    shots: 1024
-    log_level: DEBUG
-    caching: true
     cache_dir: .quantum_cache
-    cache_max_age: 86400  # 24 hours in seconds
-    validate_circuits: true
+    cache_max_age: 86400
+    caching: true
+    log_level: DEBUG
     optimization_level: 1
     optimization_pipeline: default
-
-  # Testing profile
-  test:
-    simulator: cirq
-    shots: 4096
-    log_level: INFO
-    caching: true
-    cache_dir: .quantum_cache
-    cache_max_age: 604800  # 1 week in seconds
-    validate_circuits: true
-    optimization_level: 2
-    optimization_pipeline: default
-
-  # Production profile
-  prod:
+    shots: 1024
     simulator: qiskit
-    shots: 8192
-    log_level: WARNING
-    caching: false
     validate_circuits: true
+  prod:
+    cache_dir: .quantum_cache
+    caching: false
+    log_level: WARNING
     optimization_level: 3
     optimization_pipeline: optimized
-
-  # Profile for benchmarking
-  benchmark:
-    simulator: all
-    shots: 1000
+    shots: 8192
+    simulator: qiskit
+    validate_circuits: true
+  test:
+    cache_dir: .quantum_cache
+    cache_max_age: 604800
+    caching: true
     log_level: INFO
-    caching: false
-    validate_circuits: false
-    optimization_level: 0
-
-# Provider configurations
+    optimization_level: 2
+    optimization_pipeline: default
+    shots: 4096
+    simulator: cirq
+    validate_circuits: true
 quantum_providers:
-  ibm:
-    # Replace with your actual token
-    token: null
-    hub: ibm-q
-    group: open
-    project: main
-
   aws:
     region: us-east-1
-    # Replace with your S3 bucket name
     s3_bucket: null
-
   google:
-    # Replace with your Google Cloud project ID
     project_id: null
-
-# Paths to plugin directories
-plugin_paths:
-  - examples/plugins
-  - ~/.quantum-cli/plugins 
+  ibm:
+    group: open
+    hub: ibm-q
+    project: main
+    token: YOUR_IBM_TOKEN

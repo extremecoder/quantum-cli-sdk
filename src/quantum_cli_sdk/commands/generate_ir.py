@@ -410,7 +410,7 @@ def generate_ir(source: str = None, dest: str = None, use_llm: bool = False,
             return None
     
     if dest is None:
-        dest_dir = os.path.join(os.getcwd(), "ir", "base")
+        dest_dir = os.path.join(os.getcwd(), "ir", "openqasm", "base")
         os.makedirs(dest_dir, exist_ok=True)
         # Extract filename from source and use it for destination
         source_filename = os.path.basename(source)

@@ -12,7 +12,6 @@ from pathlib import Path
 import datetime
 
 from . import __version__
-from .simulator import run_simulation
 
 # Import command modules or specific functions
 from .commands import run
@@ -52,6 +51,7 @@ from .visualizer import visualize_circuit_command, visualize_results_command
 from .versioning import init_repo, commit_circuit, get_circuit_version, list_circuit_versions, checkout_version
 from .marketplace import browse_marketplace, search_marketplace, get_algorithm_details, download_algorithm, publish_algorithm, submit_review, configure_marketplace
 from .sharing import share_circuit, list_my_shared_circuits, list_shared_with_me, get_shared_circuit_details, update_share_permissions, remove_collaborator, unshare_circuit, get_activity_history, search_shared_circuits, SharingPermission
+from .simulator import run_simulation
 from . import circuit_comparison
 from . import hardware_selector
 from . import job_management
@@ -177,8 +177,8 @@ def setup_run_commands(subparsers):
 
     # run simulate
     simulate_parser = run_subparsers.add_parser("simulate", help="Run a circuit on a simulator")
-    simulate_parser.add_argument("qasm_file", help="Path to the OpenQASM file to simulate")
-    simulate_parser.add_argument("--backend", required=True, choices=['qiskit', 'cirq', 'braket'], help="Simulation backend to use")
+    simulate_parser.add_argument("qasm_file", nargs='?', help="Path to the OpenQASM file to simulate (default: uses first .qasm file in ir/openqasm/base)")
+    simulate_parser.add_argument("--backend", choices=['qiskit', 'cirq', 'braket'], default='qiskit', help="Simulation backend to use (default: qiskit)")
     simulate_parser.add_argument("--output", help="Optional output file for simulation results (JSON)")
     simulate_parser.add_argument("--shots", type=int, default=1024, help="Number of simulation shots")
     # Add other simulation options later (e.g., --noise-model)
@@ -815,20 +815,14 @@ def handle_ir_commands(args):
 def handle_run_commands(args):
     """Handle run subcommands (simulate, hw)."""
     if args.run_cmd == "simulate":
-        # Check if the simulate function exists in the module
-        if hasattr(simulate_mod, 'simulate_circuit'):
-            # Pass all relevant arguments
-            success = simulate_mod.simulate_circuit(
-                qasm_file=args.qasm_file,
-                backend_name=args.backend,
-                output_file=args.output,
-                num_shots=args.shots
-            )
-            sys.exit(0 if success else 1)
-        else:
-            logger.error("simulate_circuit function not found in simulate_mod. Cannot execute command.")
-            print("Error: Command implementation missing.", file=sys.stderr)
-            sys.exit(1)
+        # Use run_simulation directly
+        success = simulate_mod.run_simulation(
+            source_file=args.qasm_file,
+            backend=args.backend,
+            output=args.output,
+            shots=args.shots
+        )
+        sys.exit(0 if success else 1)
     # Add handlers for other run commands (e.g., run hw) when implemented
     else:
         print(f"Error: Unknown run command '{args.run_cmd}'", file=sys.stderr)
@@ -1112,6 +1106,97 @@ def handle_service_commands(args):
     
     else:
         print(f"Error: Unknown service command '{args.service_cmd}'", file=sys.stderr)
+        sys.exit(1)
+
+def handle_config_commands(args):
+    """Handle configuration commands."""
+    from . import config as config_mod
+    
+    if args.config_cmd == "get":
+        # Get configuration value
+        value = config_mod.get_config().get_setting(args.path)
+        if value is not None:
+            print(value)
+        else:
+            print(f"Configuration value not found: {args.path}", file=sys.stderr)
+            sys.exit(1)
+    elif args.config_cmd == "set":
+        # Set configuration value
+        if args.path.startswith("quantum_providers."):
+            # Handle provider configuration
+            parts = args.path.split(".")
+            if len(parts) == 3:  # quantum_providers.provider.key
+                provider = parts[1]
+                key = parts[2]
+                config_mod.get_config().set_provider_config(provider, key, args.value)
+                config_mod.get_config().save_config()
+            else:
+                print(f"Invalid provider configuration path: {args.path}", file=sys.stderr)
+                sys.exit(1)
+        else:
+            # Handle other configuration settings
+            config_mod.get_config().set_setting(args.path, args.value)
+            config_mod.get_config().save_config()
+    elif args.config_cmd == "print":
+        # Print entire configuration
+        print(json.dumps(config_mod.get_config()._config, indent=2))
+    elif args.config_cmd == "defaults":
+        # Print default parameters
+        if args.command:
+            print(json.dumps(config_mod.get_config().get_profile_config().get("default_parameters", {}).get(args.command, {}), indent=2))
+        else:
+            print(json.dumps(config_mod.get_config().get_profile_config().get("default_parameters", {}), indent=2))
+    elif args.config_cmd == "profile":
+        if args.profile_cmd == "list":
+            # List available profiles
+            profiles = config_mod.get_config().get_all_profiles()
+            active = config_mod.get_config().get_active_profile()
+            print("Available profiles:")
+            for profile in profiles:
+                print(f"  {profile}{'*' if profile == active else ''}")
+        elif args.profile_cmd == "create":
+            # Create new profile
+            if config_mod.get_config().create_profile(args.name):
+                print(f"Created profile: {args.name}")
+            else:
+                sys.exit(1)
+        elif args.profile_cmd == "load":
+            # Load profile
+            if config_mod.get_config().set_active_profile(args.name):
+                print(f"Loaded profile: {args.name}")
+            else:
+                sys.exit(1)
+        elif args.profile_cmd == "delete":
+            # Delete profile
+            if config_mod.get_config().delete_profile(args.name):
+                print(f"Deleted profile: {args.name}")
+            else:
+                sys.exit(1)
+        else:
+            print(f"Unknown profile command: {args.profile_cmd}", file=sys.stderr)
+            sys.exit(1)
+    elif args.config_cmd == "export":
+        # Export configuration
+        try:
+            with open(args.output_file, 'w') as f:
+                json.dump(config_mod.get_config()._config, f, indent=2)
+            print(f"Configuration exported to: {args.output_file}")
+        except Exception as e:
+            print(f"Failed to export configuration: {e}", file=sys.stderr)
+            sys.exit(1)
+    elif args.config_cmd == "import":
+        # Import configuration
+        try:
+            with open(args.input_file, 'r') as f:
+                config_data = json.load(f)
+            config_mod.get_config()._update_config(config_data)
+            config_mod.get_config().save_config()
+            print(f"Configuration imported from: {args.input_file}")
+        except Exception as e:
+            print(f"Failed to import configuration: {e}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        print(f"Unknown config command: {args.config_cmd}", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":

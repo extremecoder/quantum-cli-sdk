@@ -256,7 +256,7 @@ QUANTUM_APP_TEMPLATE = {
     "dirs": [
         ".github/workflows",
         "dist", # For package output
-        "ir/openqasm", # Base IR
+        "ir/openqasm/base", # Base IR
         "ir/openqasm/optimized", # Optimized IR
         "ir/openqasm/mitigated", # Mitigated IR
         "results/validation",
@@ -269,11 +269,8 @@ QUANTUM_APP_TEMPLATE = {
         "results/analysis/benchmark",
         "results/analysis/finetuning",
         "results/tests/unit",
-        "results/tests/service",
-        "services/generated", # Base dir for generated services
-        # "services/tests", # Removed
         "source/circuits", # User's source code
-        "tests/generated" # For generated unit tests
+        "tests" # For generated unit tests
     ]
 }
 

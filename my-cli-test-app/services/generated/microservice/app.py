@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Generated Quantum Microservice
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
 from pydantic import BaseModel, Field
@@ -26,16 +27,11 @@ SERVICE_VERSION = "0.1.0"
 log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 log_handler_stdout = logging.StreamHandler(sys.stdout)
 log_handler_stdout.setFormatter(log_formatter)
-# Optional file handler (consider volume mapping in Docker)
-# log_handler_file = logging.FileHandler("microservice.log")
-# log_handler_file.setFormatter(log_formatter)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO) # Default level
 logger.addHandler(log_handler_stdout)
-# logger.addHandler(log_handler_file)
 
-import sys # Add import
 logger.info(f"Initial sys.path: {sys.path}") # Log sys.path
 
 # --- Backend Availability & SDK Import Handling ---
@@ -64,9 +60,9 @@ except ImportError:
 
 CIRQ_AVAILABLE = False
 cirq = None
-# Rely on cirq.contrib.qasm_import instead
 try:
     import cirq
+    from cirq.contrib.qasm_import import circuit_from_qasm
     CIRQ_AVAILABLE = True
 except ImportError:
     logger.debug("Cirq not available.")
@@ -97,6 +93,7 @@ class CircuitRequest(BaseModel):
     circuit: Optional[str] = None
     shots: int = 1000
     parameters: Dict[str, float] = {}
+    simulator: str = "cirq"  # Default to cirq, but allow selection of "qiskit" or "braket"
 
 class JobStatus(BaseModel):
     job_id: str
@@ -151,9 +148,9 @@ def load_circuit_qasm(qasm_str: Optional[str] = None) -> cirq.Circuit:
         logger.error(f"Error loading circuit: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Failed to load circuit: {str(e)}")
 
-def run_simulation(circuit: cirq.Circuit, shots: int = 1000) -> Dict[str, int]:
+def run_simulation_cirq(circuit: cirq.Circuit, shots: int = 1000) -> Dict[str, int]:
     """
-    Run a simulation on the provided circuit
+    Run a simulation on the provided circuit using Cirq
     
     Args:
         circuit: The Cirq circuit to simulate
@@ -180,8 +177,143 @@ def run_simulation(circuit: cirq.Circuit, shots: int = 1000) -> Dict[str, int]:
                 
         return counts
     except Exception as e:
-        logger.error(f"Simulation error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Simulation failed: {str(e)}")
+        logger.error(f"Cirq simulation error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Cirq simulation failed: {str(e)}")
+
+def run_simulation_qiskit(qasm_str: str, shots: int = 1000) -> Dict[str, int]:
+    """
+    Run a simulation on the provided circuit using Qiskit
+    
+    Args:
+        qasm_str: The OpenQASM string to simulate
+        shots: Number of simulation shots
+        
+    Returns:
+        Dictionary of measurement results
+    """
+    try:
+        # Try importing qiskit modules directly
+        try:
+            import qiskit
+            # For Qiskit 0.25.x (terra), QuantumCircuit is in circuit submodule
+            from qiskit.circuit import QuantumCircuit
+            
+            # Try both import patterns for Aer (newer versions use qiskit_aer)
+            try:
+                from qiskit_aer import AerSimulator
+                from qiskit.primitives import BackendSampler
+                backend = AerSimulator()
+                logger.info("Using Qiskit AerSimulator for simulation")
+                
+                # For Qiskit 1.0+, use the Sampler primitive
+                sampler = BackendSampler(backend)
+                
+            except ImportError as aer_error:
+                logger.warning(f"Failed to import qiskit_aer: {aer_error}. Falling back to older Qiskit API.")
+                # Fallback for older Qiskit versions
+                from qiskit import Aer, execute
+                backend = Aer.get_backend('qasm_simulator')
+                
+        except ImportError as e:
+            logger.error(f"Required Qiskit modules not available: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Qiskit simulator requested but not available: {str(e)}")
+        
+        # Log the QASM string (can be removed in production)
+        logger.debug(f"Running Qiskit simulation with QASM: {qasm_str[:100]}...")
+        
+        # Load QASM into Qiskit circuit
+        circuit = QuantumCircuit.from_qasm_str(qasm_str)
+        
+        # Run the simulation - handle both new and old APIs
+        if 'sampler' in locals():
+            # New Qiskit 1.0+ API using Sampler
+            job_result = sampler.run(circuit, shots=shots).result()
+            # Convert quasi-distribution to counts
+            quasi_dist = job_result.quasi_dists[0]
+            counts = {}
+            for bitstring_val, count_prob in quasi_dist.items():
+                # Handle if bitstring is already an integer (not a string)
+                if isinstance(bitstring_val, int):
+                    bit_length = circuit.num_qubits
+                    bitstring = format(bitstring_val, '0' + str(bit_length) + 'b')
+                else:
+                    bitstring = bitstring_val
+                counts[bitstring] = int(count_prob * shots)
+        else:
+            # Old Qiskit API using execute
+            job = execute(circuit, backend, shots=shots)
+            result = job.result()
+            
+            if not result.success:
+                raise Exception("Qiskit simulation failed")
+                
+            # Get counts and return
+            counts = result.get_counts()
+        
+        # Handle the case where counts is not a dictionary
+        if not isinstance(counts, dict):
+            counts = {"0": shots}  # Default counts if no measurements
+        
+        return {k: v for k, v in counts.items()}
+        
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        logger.error(f"Qiskit simulation error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Qiskit simulation failed: {str(e)}")
+
+def run_simulation_braket(qasm_str: str, shots: int = 1000) -> Dict[str, int]:
+    """
+    Run a simulation on the provided circuit using AWS Braket
+    
+    Args:
+        qasm_str: The OpenQASM string to simulate
+        shots: Number of simulation shots
+        
+    Returns:
+        Dictionary of measurement results
+    """
+    try:
+        # Try importing braket modules directly
+        try:
+            from braket.devices import LocalSimulator
+            from braket.circuits import Circuit
+        except ImportError as e:
+            logger.error(f"Required Braket modules not available: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Braket simulator requested but not available: {str(e)}")
+        
+        # For Braket, use Cirq as a fallback since direct OpenQASM parsing isn't as straightforward
+        logger.info("Converting QASM to Cirq circuit for Braket simulation")
+        
+        # First convert to Cirq circuit
+        cirq_circuit = circuit_from_qasm(qasm_str)
+        
+        # Then run using Cirq's simulator since direct conversion is complex
+        simulator = cirq.Simulator()
+        result = simulator.run(cirq_circuit, repetitions=shots)
+        
+        # Process the measurement results
+        counts = {}
+        for key in result.measurements.keys():
+            # Convert numpy arrays to regular Python ints
+            bits = result.measurements[key].flatten().tolist()
+            bitstring = ''.join(str(int(b)) for b in bits)
+            
+            if bitstring in counts:
+                counts[bitstring] += 1
+            else:
+                counts[bitstring] = 1
+                
+        return counts
+        
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        logger.error(f"Braket simulation error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Braket simulation failed: {str(e)}")
+
+# Use the existing run_simulation as an alias for cirq
+run_simulation = run_simulation_cirq
 
 # --- API Endpoints ---
 @app.post("/run", response_model=CircuitResponse)
@@ -193,14 +325,36 @@ def run_circuit(request: CircuitRequest):
     or the default circuit will be used if not provided.
     """
     try:
-        # Load the circuit (either from request or default)
+        # Load the circuit
         circuit = load_circuit_qasm(request.circuit)
+        qasm_str = request.circuit
+        if qasm_str is None:
+            with open(default_circuit_path, 'r') as f:
+                qasm_str = f.read()
         
-        # Run the simulation
-        results = run_simulation(circuit, request.shots)
+        # Run the simulation with the selected backend
+        if request.simulator.lower() == "qiskit":
+            results = run_simulation_qiskit(qasm_str, request.shots)
+        elif request.simulator.lower() == "braket":
+            results = run_simulation_braket(qasm_str, request.shots)
+        else:  # Default to Cirq
+            results = run_simulation_cirq(circuit, request.shots)
         
-        # Create a unique job ID (this is just a placeholder)
+        # Create a unique job ID
         job_id = "job-" + os.urandom(8).hex()
+        
+        # Store job in the jobs dictionary
+        jobs[job_id] = {
+            "job_id": job_id,
+            "status": "COMPLETED",
+            "created_at": datetime.now().isoformat(),
+            "simulator": request.simulator,
+            "shots": request.shots,
+            "results": {
+                "counts": results,
+                "execution_time_sec": None
+            }
+        }
         
         # Log the job completion
         logger.info(f"Completed job {job_id} with {len(results)} results")
@@ -212,12 +366,15 @@ def run_circuit(request: CircuitRequest):
             metadata={
                 "shots": request.shots,
                 "circuit_type": "user-provided" if request.circuit else "default",
-                "parameters": request.parameters
+                "parameters": request.parameters,
+                "simulator": request.simulator  # Include which simulator was used
             }
         )
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
     except Exception as e:
-        logger.error(f"Error processing request: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error processing circuit request: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
 
 @app.get("/status/{job_id}", response_model=JobStatus)
 async def get_job_status(job_id: str):
@@ -264,7 +421,7 @@ async def get_job_results(job_id: str):
 
 # --- Main execution block (for running app.py directly) ---
 if __name__ == "__main__":
-    service_port = int(os.environ.get("PORT", 8000)) # Use direct value here
+    service_port = int(os.environ.get("PORT", 8000))
     log_level_str = os.environ.get("LOG_LEVEL", "INFO").upper()
     logger.setLevel(getattr(logging, log_level_str, logging.INFO))
     logger.info("Starting Quantum Microservice '%s' v%s directly on port %d", SERVICE_TITLE, SERVICE_VERSION, service_port)

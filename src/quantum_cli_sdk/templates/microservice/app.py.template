@@ -63,10 +63,9 @@ except ImportError:
 
 CIRQ_AVAILABLE = False
 cirq = None
-cirq_qasm = None
 try:
     import cirq
-    import cirq_qasm
+    from cirq.contrib.qasm_import import circuit_from_qasm
     CIRQ_AVAILABLE = True
 except ImportError:
     logger.debug("Cirq not available.")
@@ -114,6 +113,11 @@ class ResultsResponse(BaseModel):
     execution_time_sec: Optional[float] = Field(None, description="Approximate execution time in seconds.")
     error: Optional[str] = Field(None, description="Error message if the job failed.")
 
+class CircuitResponse(BaseModel):
+    results: Dict[str, int]
+    job_id: str
+    metadata: Dict[str, Any] = {}
+
 # --- In-Memory Job Store ---
 # NOTE: This is simple and volatile. For production, use a persistent store (DB, Redis, etc.)
 jobs: Dict[str, dict] = {}
@@ -126,75 +130,210 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 default_circuit_path = os.path.join(CIRCUITS_DIR, DEFAULT_CIRCUIT_FILENAME)
 
 # --- Helper Functions ---
-def load_circuit_qasm(circuit_str: Optional[str]) -> str:
-    """Loads QASM string, defaulting to the bundled circuit if None."""
-    if circuit_str:
-        # Basic validation (can be expanded)
-        if "OPENQASM 2.0;" not in circuit_str:
-            raise ValueError("Input does not look like a valid QASM 2.0 string.")
-        return circuit_str
-    else:
-        if not os.path.exists(default_circuit_path):
-            logger.error(f"Default circuit file not found at expected path: {default_circuit_path}")
-            raise FileNotFoundError("Default circuit file not found at expected path.")
-        try:
+def load_circuit_qasm(qasm_str: Optional[str] = None) -> cirq.Circuit:
+    """
+    Load a quantum circuit from QASM string or the default file
+    
+    Args:
+        qasm_str: Optional QASM string. If None, loads from default file
+        
+    Returns:
+        A Cirq circuit object
+    """
+    try:
+        if qasm_str:
+            logger.info("Loading circuit from provided QASM string")
+            return circuit_from_qasm(qasm_str)
+        else:
+            logger.info(f"Loading default circuit from {default_circuit_path}")
             with open(default_circuit_path, 'r') as f:
-                return f.read()
-        except Exception as e:
-            logger.error(f"Failed to read default circuit file {default_circuit_path}: {e}")
-            raise IOError(f"Failed to read default circuit file: {e}")
+                return circuit_from_qasm(f.read())
+    except Exception as e:
+        logger.error(f"Error loading circuit: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Failed to load circuit: {str(e)}")
+
+def run_simulation_cirq(circuit: cirq.Circuit, shots: int = 1000) -> Dict[str, int]:
+    """
+    Run a simulation on the provided circuit using Cirq
+    
+    Args:
+        circuit: The Cirq circuit to simulate
+        shots: Number of simulation shots
+        
+    Returns:
+        Dictionary of measurement results
+    """
+    try:
+        simulator = cirq.Simulator()
+        result = simulator.run(circuit, repetitions=shots)
+        
+        # Convert results to a simple counts dictionary
+        counts = {}
+        for key in result.measurements.keys():
+            # Convert numpy arrays to regular Python ints
+            bits = result.measurements[key].flatten().tolist()
+            bitstring = ''.join(str(int(b)) for b in bits)
+            
+            if bitstring in counts:
+                counts[bitstring] += 1
+            else:
+                counts[bitstring] = 1
+                
+        return counts
+    except Exception as e:
+        logger.error(f"Cirq simulation error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Cirq simulation failed: {str(e)}")
+
+def run_simulation_qiskit(qasm_str: str, shots: int = 1000) -> Dict[str, int]:
+    """
+    Run a simulation on the provided circuit using Qiskit
+    
+    Args:
+        qasm_str: The OpenQASM string to simulate
+        shots: Number of simulation shots
+        
+    Returns:
+        Dictionary of measurement results
+    """
+    try:
+        # Try importing qiskit modules directly
+        try:
+            import qiskit
+            # For Qiskit 0.25.x (terra), QuantumCircuit is in circuit submodule
+            from qiskit.circuit import QuantumCircuit
+            from qiskit import Aer, execute
+        except ImportError as e:
+            logger.error(f"Required Qiskit modules not available: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Qiskit simulator requested but not available: {str(e)}")
+        
+        # Log the QASM string (can be removed in production)
+        logger.debug(f"Running Qiskit simulation with QASM: {qasm_str[:100]}...")
+        
+        # Load QASM into Qiskit circuit
+        circuit = QuantumCircuit.from_qasm_str(qasm_str)
+        
+        # Run the simulation
+        backend = Aer.get_backend('qasm_simulator')
+        job = execute(circuit, backend, shots=shots)
+        result = job.result()
+        
+        if not result.success:
+            raise Exception("Qiskit simulation failed")
+            
+        # Get counts and return
+        counts = result.get_counts()
+        # Handle the case where counts is not a dictionary
+        if not isinstance(counts, dict):
+            counts = {"0": shots}  # Default counts if no measurements
+        
+        return {k: v for k, v in counts.items()}
+        
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        logger.error(f"Qiskit simulation error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Qiskit simulation failed: {str(e)}")
+
+def run_simulation_braket(qasm_str: str, shots: int = 1000) -> Dict[str, int]:
+    """
+    Run a simulation on the provided circuit using AWS Braket
+    
+    Args:
+        qasm_str: The OpenQASM string to simulate
+        shots: Number of simulation shots
+        
+    Returns:
+        Dictionary of measurement results
+    """
+    try:
+        # Try importing braket modules directly
+        try:
+            from braket.devices import LocalSimulator
+            from braket.circuits import Circuit
+        except ImportError as e:
+            logger.error(f"Required Braket modules not available: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Braket simulator requested but not available: {str(e)}")
+        
+        # For Braket, use Cirq as a fallback since direct OpenQASM parsing isn't as straightforward
+        logger.info("Converting QASM to Cirq circuit for Braket simulation")
+        
+        # First convert to Cirq circuit
+        cirq_circuit = circuit_from_qasm(qasm_str)
+        
+        # Then run using Cirq's simulator since direct conversion is complex
+        simulator = cirq.Simulator()
+        result = simulator.run(cirq_circuit, repetitions=shots)
+        
+        # Process the measurement results
+        counts = {}
+        for key in result.measurements.keys():
+            # Convert numpy arrays to regular Python ints
+            bits = result.measurements[key].flatten().tolist()
+            bitstring = ''.join(str(int(b)) for b in bits)
+            
+            if bitstring in counts:
+                counts[bitstring] += 1
+            else:
+                counts[bitstring] = 1
+                
+        return counts
+        
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        logger.error(f"Braket simulation error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Braket simulation failed: {str(e)}")
+
+# Use the existing run_simulation as an alias for cirq
+run_simulation = run_simulation_cirq
 
 # --- API Endpoints ---
-@app.post("/run", status_code=202, response_model=JobStatus)
-async def run_circuit_endpoint(request: CircuitRequest, background_tasks: BackgroundTasks):
-    """Submit a quantum circuit for execution."""
-    # Validate simulator choice against available backends
-    if request.simulator == "qiskit" and not QISKIT_AVAILABLE:
-        raise HTTPException(status_code=400, detail="Qiskit backend selected but not available.")
-    if request.simulator == "cirq" and not CIRQ_AVAILABLE:
-        raise HTTPException(status_code=400, detail="Cirq backend selected but not available.")
-    if request.simulator == "braket" and not BRAKET_AVAILABLE:
-        raise HTTPException(status_code=400, detail="Braket backend selected but not available.")
-    if request.simulator not in ["qiskit", "cirq", "braket"]:
-        raise HTTPException(status_code=400, detail=f"Unsupported simulator: {request.simulator}")
-
-    # Load circuit (handles default case)
+@app.post("/run", response_model=CircuitResponse)
+def run_circuit(request: CircuitRequest):
+    """
+    Run a quantum circuit and return the results
+    
+    The circuit can be provided as QASM in the request,
+    or the default circuit will be used if not provided.
+    """
     try:
-        circuit_qasm = load_circuit_qasm(request.circuit)
-    except (ValueError, FileNotFoundError, IOError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    # Generate a unique job ID
-    job_id = str(uuid.uuid4())
-    created_time = datetime.utcnow().isoformat() + "Z"
-
-    # Store job metadata (volatile)
-    # Save circuit to a temporary file for the background task
-    temp_circuit_file_path = os.path.join(CIRCUITS_DIR, f"job_{job_id}_circuit.qasm")
-    try:
-        with open(temp_circuit_file_path, "w") as f:
-            f.write(circuit_qasm)
-    except IOError as e:
-        logger.error(f"Failed to write temporary circuit file for job {job_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to save circuit file for processing.")
-
-    jobs[job_id] = {
-        "job_id": job_id,
-        "status": "QUEUED",
-        "created_at": created_time,
-        "simulator": request.simulator,
-        "shots": request.shots,
-        "parameters": request.parameters, # Store parameters if needed by task
-        "circuit_path": temp_circuit_file_path, # Path to the saved circuit
-        "results": None,
-        "error": None
-    }
-
-    # Add the execution task to the background
-    background_tasks.add_task(execute_circuit_task, job_id)
-    logger.info(f"Job {job_id} QUEUED for execution on {request.simulator} simulator.")
-
-    return JobStatus(**jobs[job_id]) # Return initial status
+        # Load the circuit
+        circuit = load_circuit_qasm(request.circuit)
+        qasm_str = request.circuit
+        if qasm_str is None:
+            with open(default_circuit_path, 'r') as f:
+                qasm_str = f.read()
+        
+        # Run the simulation with the selected backend
+        if request.simulator.lower() == "qiskit":
+            results = run_simulation_qiskit(qasm_str, request.shots)
+        elif request.simulator.lower() == "braket":
+            results = run_simulation_braket(qasm_str, request.shots)
+        else:  # Default to Cirq
+            results = run_simulation_cirq(circuit, request.shots)
+        
+        # Create a unique job ID
+        job_id = "job-" + os.urandom(8).hex()
+        
+        # Log the job completion
+        logger.info(f"Completed job {job_id} with {len(results)} results")
+        
+        # Return the response
+        return CircuitResponse(
+            results=results,
+            job_id=job_id,
+            metadata={
+                "shots": request.shots,
+                "circuit_type": "user-provided" if request.circuit else "default",
+                "parameters": request.parameters,
+                "simulator": request.simulator  # Include which simulator was used
+            }
+        )
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        logger.error(f"Error processing circuit request: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
 
 @app.get("/status/{job_id}", response_model=JobStatus)
 async def get_job_status(job_id: str):

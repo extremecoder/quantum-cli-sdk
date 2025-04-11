@@ -1,0 +1,77 @@
+{
+  "circuit": {
+    "name": "my_circuit",
+    "qubits": 4,
+    "depth": 11,
+    "gates": {
+      "total": 39,
+      "single_qubit": 28,
+      "two_qubit": 18
+    }
+  },
+  "execution": {
+    "shots": 1000
+  },
+  "costs": {
+    "ibm": {
+      "base_rate": 0.00022,
+      "device": "heron",
+      "device_rate": 0.00022,
+      "shots": 1000,
+      "depth_factor": 1.11,
+      "qubit_factor": 1.32,
+      "base_cost": 0.22,
+      "device_cost": 0.3223440000000001,
+      "total_cost": 0.3223440000000001
+    },
+    "aws": {
+      "base_rate": 0.00035,
+      "service": "sv1",
+      "service_rate": 0.0003,
+      "circuit_time_sec": 0.0088,
+      "task_hours": 0.002444444444444445,
+      "shots": 1000,
+      "base_cost": 8.555555555555557e-07,
+      "service_cost": 7.333333333333333e-07,
+      "total_cost": 7.333333333333333e-07
+    },
+    "google": {
+      "base_rate": 0.0004,
+      "device": "rainbow",
+      "device_rate": 0.0005,
+      "processor_seconds": 11.0,
+      "processor_hours": 0.0030555555555555557,
+      "shots": 1000,
+      "base_cost": 0.0044,
+      "device_cost": 0.0055,
+      "total_cost": 0.0055
+    },
+    "ionq": {
+      "base_rate": 0.001,
+      "shots": 1000,
+      "complexity_factor": 0.44000000000000006,
+      "base_cost": 1.0,
+      "total_cost": 1.22
+    },
+    "rigetti": {
+      "base_rate": 0.00033,
+      "shots": 1000,
+      "complexity_factor": 0.44000000000000006,
+      "base_cost": 0.33,
+      "total_cost": 0.4026
+    }
+  },
+  "comparison": {
+    "cheapest": {
+      "platform": "aws",
+      "total_cost": 7.333333333333333e-07,
+      "savings_vs_expensive": 1.2199992666666666
+    },
+    "most_expensive": {
+      "platform": "ionq",
+      "total_cost": 1.22
+    },
+    "cost_ratio": 1663636.3636363635
+  },
+  "disclaimer": "These estimates are approximate and may vary based on actual hardware availability, queue times, and pricing changes."
+}

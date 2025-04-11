@@ -5,8 +5,7 @@
 ### Phase 1: Core Command Implementation
 1. [x] 2023-10-15: Set up project structure and CLI framework
 2. [x] 2024-08-02: Implement `init` command for project scaffolding
-   The scaffolding should follow structure as shown in below pic
-   ![Project Structure](./images/quantum-app-folder-structure.png)
+   The scaffolding should follow structure as shown in README.md
 3. [x] 2025-04-01: Create GitHub Actions workflow templates
    This template will basically be made available in the init generated scaffolding
 4. [x] 2025-04-01: Implement `ir generate` command for OpenQASM conversion (Aligned with pipeline, LLM added)

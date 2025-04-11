@@ -230,7 +230,7 @@ def create_quantum_manifest(app_root, circuit_name=None):
     except Exception as e:
         logger.error(f"Error creating default quantum manifest at {manifest_path}: {e}")
         # Return the data anyway, even if write failed
-
+    
     return manifest_data
 
 def load_quantum_manifest(app_root, circuit_name=None, extracted_data=None):
@@ -243,8 +243,8 @@ def load_quantum_manifest(app_root, circuit_name=None, extracted_data=None):
     
     # 1. Check extracted data (if from a zip)
     if extracted_data and "metadata_file" in extracted_data and extracted_data["metadata_file"]:
-        metadata_file = extracted_data["metadata_file"]
-        if os.path.exists(metadata_file):
+            metadata_file = extracted_data["metadata_file"]
+            if os.path.exists(metadata_file):
             try:
                 with open(metadata_file, 'r') as f:
                     if metadata_file.endswith('.json'):
@@ -255,7 +255,7 @@ def load_quantum_manifest(app_root, circuit_name=None, extracted_data=None):
                         logger.warning(f"Unsupported metadata format in zip: {metadata_file}")
             except json.JSONDecodeError:
                  logger.warning(f"Manifest file from zip {metadata_file} is corrupted.")
-            except Exception as e:
+        except Exception as e:
                 logger.error(f"Error loading manifest from extracted zip {metadata_file}: {e}")
     
     # 2. Check app root (if not loaded from zip)
@@ -388,17 +388,33 @@ def find_input_file(source_file, app_root):
     logger.warning(f"Could not find specified source file '{source_file}' in standard locations relative to app root '{app_root_abs}'. Returning original path.")
     return source_file # Return original path if not found
 
-def generate_microservice(source_file, dest_dir=None, llm_url=None, port=8000, app_root=None):
+def generate_microservice(source_file=None, dest_dir=None, llm_url=None, port=8000, app_root=None):
     """
-    Generate a microservice wrapper for a quantum circuit.
-    Includes requirements pinning and default QASM handling.
-    Uses separate template files.
-    """
+    Generate a microservice for the provided QASM circuit or packaged app.
     
-    # --- Determine Application Root --- 
-    if not app_root: app_root = os.getcwd()
-    app_root = os.path.abspath(app_root)
-    logger.info(f"Using application root: {app_root}")
+    Args:
+        source_file: Input QASM file or ZIP bundle 
+        dest_dir: Destination directory (default: app_root/services/generated/microservice)
+        llm_url: URL to an LLM for enhanced generation (if None, uses templates)
+        port: Port number for the service to listen on
+        app_root: Root of the application (used for resolving paths)
+        
+    Returns:
+        bool: True if generation succeeded
+    """
+    # Ensure templates exist first
+    if not setup_microservice_templates():
+        logger.error("Failed to set up required microservice templates. Aborting.")
+        return False
+        
+    # Also try to build the base Docker image
+    if not create_base_docker_image():
+         logger.warning(f"Failed to build base Docker image '{QUANTUM_DOCKER_IMAGE}'. Microservice may not work correctly.")
+         
+    # Override app_root to use current directory if not provided
+    if not app_root:
+        app_root = os.getcwd()
+        logger.debug(f"app_root not provided, using current directory: {app_root}")
 
     # --- Determine Input Source File --- 
     actual_source_file = None
@@ -422,9 +438,9 @@ def generate_microservice(source_file, dest_dir=None, llm_url=None, port=8000, a
     else:
         # If source_file is provided, use it directly after validation
         # Remove the call to find_input_file
-        if not os.path.exists(source_file):
+    if not os.path.exists(source_file):
              logger.error(f"Provided source file does not exist: {source_file}")
-             return False
+        return False
         # Check if it's absolute, make it absolute if not (relative to CWD)
         if not os.path.isabs(source_file):
              actual_source_file = os.path.abspath(source_file)
@@ -451,12 +467,12 @@ def generate_microservice(source_file, dest_dir=None, llm_url=None, port=8000, a
         dest_dir = os.path.join(app_root, dest_dir)
     dest_dir = os.path.abspath(dest_dir)
     try:
-        os.makedirs(dest_dir, exist_ok=True)
+    os.makedirs(dest_dir, exist_ok=True)
         logger.info(f"Ensured microservice destination directory exists: {dest_dir}")
     except Exception as e:
         logger.error(f"Failed to create destination directory {dest_dir}: {e}")
         return False
-
+    
     # --- Process Input File (QASM or ZIP) --- 
     circuit_info = None
     circuit_file_to_copy = None 
@@ -464,7 +480,7 @@ def generate_microservice(source_file, dest_dir=None, llm_url=None, port=8000, a
     manifest_source_path = None
     extracted_data = None
     extract_dir = None # Define extract_dir outside if block
-
+    
     if file_ext == '.zip':
         extract_dir = os.path.join(dest_dir, "_extracted_zip") # Temp extraction dir
         extracted_data = extract_zip_package(actual_source_file, extract_dir)
@@ -487,7 +503,7 @@ def generate_microservice(source_file, dest_dir=None, llm_url=None, port=8000, a
     if not manifest_data: logger.error("Failed to load/create quantum manifest. Aborting."); return False
 
     # --- Requirements Pinning (Revised Root Finding) --- 
-    core_deps = ["fastapi", "uvicorn", "pydantic", "qiskit", "qiskit-aer", "cirq", "amazon-braket-sdk", "matplotlib", "numpy"]
+    core_deps = ["fastapi", "uvicorn", "pydantic", "qiskit", "qiskit-aer", "cirq", "cirq-qasm", "amazon-braket-sdk", "matplotlib", "numpy"]
     pinned_requirements = []
     root_req_path = None
     
@@ -531,7 +547,40 @@ def generate_microservice(source_file, dest_dir=None, llm_url=None, port=8000, a
     else:
         logger.warning(f"Project root requirements.txt not found. Using unpinned dependencies.")
         pinned_requirements = core_deps
-    requirements_content = "\n".join(sorted(pinned_requirements)) + "\n"
+    
+    # Ensure cirq-qasm is explicitly included
+    if "cirq-qasm" not in pinned_requirements:
+        logger.info("Adding cirq-qasm to requirements (critical dependency)")
+        pinned_requirements.append("cirq-qasm")
+    
+    logger.debug(f"Final requirements (before sorting): {pinned_requirements}")
+    sorted_requirements = sorted(pinned_requirements)
+    logger.debug(f"Final requirements (after sorting): {sorted_requirements}")
+    requirements_content = "\n".join(sorted_requirements) + "\n"
+    
+    # Also explicitly write cirq-qasm to the requirements.txt file
+    with open(os.path.join(dest_dir, "requirements.txt.debug"), 'w') as f:
+        f.write("# Debug requirements.txt - generated directly\n")
+        f.write("# All dependencies before sorting:\n")
+        for req in pinned_requirements:
+            f.write(f"{req}\n")
+        f.write("\n# After sorting:\n")
+        for req in sorted_requirements:
+            f.write(f"{req}\n")
+    
+    # --- Write Pinned Requirements File --- 
+    req_txt_path = os.path.join(dest_dir, "requirements.txt")
+    try:
+        # Make sure we explicitly add cirq-qasm to the requirements
+        with open(req_txt_path, 'w') as f: 
+            f.write(requirements_content)
+            # Double-check that cirq-qasm is in the file
+            if "cirq-qasm" not in requirements_content:
+                f.write("cirq-qasm\n")
+        logger.info(f"Generated {req_txt_path} with pinned versions.")
+    except Exception as e:
+        logger.error(f"Failed to write {req_txt_path}: {e}", exc_info=True)
+        return False # Requirements are critical
 
     # --- Prepare Template Context --- 
     app_name = manifest_data.get("app_name", f"quantum-{circuit_info.get('name', 'service')}")
@@ -553,25 +602,26 @@ def generate_microservice(source_file, dest_dir=None, llm_url=None, port=8000, a
     files_to_generate = ["Dockerfile", "app.py", "README.md"]
 
     for template_basename in files_to_generate:
-        # Calculate template path relative to this script's location
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        templates_root_dir = os.path.join(os.path.dirname(script_dir), "templates", "microservice")
-        template_path = os.path.join(templates_root_dir, f"{template_basename}.template")
+        # Use the established TEMPLATES_DIR constant
+        template_path = os.path.join(TEMPLATES_DIR, f"{template_basename}.template")
         
         output_path = os.path.join(dest_dir, template_basename)
         
         # Read template content using the calculated path
         try:
-            logger.debug(f"Attempting to read template: {template_path}") # DEBUG
-            logger.debug(f"os.path.exists check: {os.path.exists(template_path)}") # DEBUG
+            logger.debug(f"Attempting to read template: {template_path}")
+            logger.debug(f"os.path.exists check: {os.path.exists(template_path)}")
+            logger.debug(f"os.path.isfile check: {os.path.isfile(template_path)}")
+            logger.debug(f"Template file stats: {os.stat(template_path) if os.path.exists(template_path) else 'N/A'}")
             with open(template_path, 'r') as f:
                 template_content = f.read()
+                logger.debug(f"Successfully read template: {template_basename}, length: {len(template_content)} chars")
         except FileNotFoundError:
             logger.error(f"Template file missing: {template_path}. Cannot generate {output_path}.")
             if template_basename == "app.py": return False
             continue
         except Exception as e:
-            logger.error(f"Error reading template {template_path}: {e}")
+            logger.error(f"Error reading template {template_path}: {e}", exc_info=True)
             if template_basename == "app.py": return False
             continue
             
@@ -591,15 +641,6 @@ def generate_microservice(source_file, dest_dir=None, llm_url=None, port=8000, a
         except Exception as e:
             logger.error(f"Failed to write generated file {output_path}: {e}", exc_info=True)
             if template_basename == "app.py": return False # app.py is critical
-
-    # --- Write Pinned Requirements File --- 
-    req_txt_path = os.path.join(dest_dir, "requirements.txt")
-    try:
-        with open(req_txt_path, 'w') as f: f.write(requirements_content)
-        logger.info(f"Generated {req_txt_path} with pinned versions.")
-    except Exception as e:
-        logger.error(f"Failed to write {req_txt_path}: {e}", exc_info=True)
-        return False # Requirements are critical
 
     # --- Copy Default Circuit and Manifest --- 
     circuits_dir = os.path.join(dest_dir, "circuits")
@@ -670,8 +711,8 @@ CMD ["python"]
                  stderr = result_data.get("stderr", "")
                  if success:
                      logger.info(f"Base Docker image '{QUANTUM_DOCKER_IMAGE}' built successfully.")
-                     return True
-                 else:
+                return True
+            else:
                      logger.error(f"Failed to build base Docker image '{QUANTUM_DOCKER_IMAGE}'. Error: {stderr or stdout}")
                      return False
             elif isinstance(result_data, bool): # Handle simpler boolean return
@@ -688,7 +729,7 @@ CMD ["python"]
                  
     except FileNotFoundError: # Handle case where docker command might not be found
         logger.error("Docker command not found. Cannot build base image. Is Docker installed and in PATH?")
-        return False
+                return False
     except Exception as e:
         logger.error(f"An unexpected error occurred during base Docker image build: {e}", exc_info=True)
         return False
@@ -701,9 +742,12 @@ def setup_microservice_templates():
         bool: True if all essential templates exist or were created.
     """
     all_exist = True
-    templates_dir = TEMPLATES_DIR
+        templates_dir = TEMPLATES_DIR
+    logger.debug(f"Setting up templates in directory: {templates_dir}")
+    
     try:
         os.makedirs(templates_dir, exist_ok=True)
+        logger.debug(f"Templates directory created/exists: {templates_dir}")
     except Exception as e:
         logger.error(f"Failed to create templates directory {templates_dir}: {e}")
         return False
@@ -749,19 +793,32 @@ if __name__ == "__main__":
 
     for filename, fallback_content in fallback_templates.items():
         template_path = os.path.join(templates_dir, filename)
+        logger.debug(f"Checking template: {template_path}, exists: {os.path.exists(template_path)}")
+        
         if not os.path.exists(template_path):
             try:
                 with open(template_path, 'w') as f:
                     f.write(fallback_content)
                 logger.warning(f"Template '{filename}' was missing, created a minimal fallback version.")
-            except Exception as e:
+    except Exception as e:
                 logger.error(f"Failed to create fallback template {template_path}: {e}", exc_info=True)
                 if filename == "app.py.template": all_exist = False # app.py is critical
+        else:
+            logger.debug(f"Template exists: {template_path}, size: {os.path.getsize(template_path)}")
     
     # Verify again after potential creation
     if not os.path.exists(os.path.join(templates_dir, "app.py.template")):
          logger.error("Critical template app.py.template is missing and could not be created.")
          all_exist = False
+    
+    # Add setup initialization flag
+    template_init_flag = os.path.join(templates_dir, ".templates_initialized")
+    try:
+        with open(template_init_flag, 'w') as f:
+            f.write("Templates initialized at " + datetime.datetime.now().isoformat())
+        logger.debug(f"Template initialization flag created: {template_init_flag}")
+    except Exception as e:
+        logger.warning(f"Failed to create template initialization flag: {e}")
 
     return all_exist
 

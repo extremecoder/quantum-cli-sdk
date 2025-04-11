@@ -1,5 +1,0 @@
-# Basic dependencies for quantum projects
-quantum-cli-sdk>=0.3.0
-matplotlib>=3.5.0
-numpy>=1.22.0
-qiskit>=1.0.0 
