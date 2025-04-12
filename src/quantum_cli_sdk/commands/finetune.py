@@ -620,7 +620,8 @@ def finetune_circuit(input_file, output_file, hardware="ibm", search_method="ran
             else:
                 # Use simulator for random search
                 results = random_search(input_file, parameter_ranges, shots, backend_config["simulator"], num_trials=50)
-            
+
+        logger.info("abhishek results: {results}")    
         # Add metadata to the results
         finetuned_results = {
             "circuit_file": input_file,
@@ -650,8 +651,8 @@ def finetune_circuit(input_file, output_file, hardware="ibm", search_method="ran
                 )
                 baseline_result = {
                     "success": True,
-                    "counts": baseline_result_obj.counts,
-                    "metadata": baseline_result_obj.metadata
+                    "counts": baseline_result_obj["counts"],
+                    "metadata": baseline_result_obj["metadata"]
                 }
                 
                 # Calculate metrics from counts
@@ -886,9 +887,10 @@ def grid_search_hardware(circuit_file, parameter_ranges, shots, hardware_runner,
         )
         
         # Process result
-        if hasattr(result_obj, "counts") and result_obj.counts and "error" not in result_obj.counts:
+        if isinstance(result_obj, dict) and "counts" in result_obj and result_obj["counts"] and (isinstance(result_obj["counts"], dict) and "error" not in result_obj["counts"]):
             # Calculate metrics from counts
-            counts = result_obj.counts
+            counts = result_obj["counts"]
+            metadata = result_obj.get("metadata", {})
             
             # Debug information
             logger.debug(f"Counts type: {type(counts)}")
@@ -1009,13 +1011,15 @@ def grid_search_hardware(circuit_file, parameter_ranges, shots, hardware_runner,
                 "counts": counts,
                 "shots": shots,
                 "parameters": params,
-                "hardware_metadata": result_obj.metadata
+                "hardware_metadata": metadata
             }
             
             results.append(result_dict)
             logger.info(f"Completed {i+1}/{len(combinations)} with score {score:.4f}")
         else:
-            logger.warning(f"Failed run {i+1}/{len(combinations)}: {getattr(result_obj, 'metadata', {}).get('error', 'Unknown error')}")
+            # Use dictionary access for metadata error, default to 'Unknown error'
+            error_msg = result_obj.get("metadata", {}).get("error", "Unknown error") if isinstance(result_obj, dict) else "Unknown error (Result not a dict)"
+            logger.warning(f"Failed run {i+1}/{len(combinations)}: {error_msg}")
     
     # Sort by score (descending)
     results.sort(key=lambda x: x.get("score", 0), reverse=True)
@@ -1058,15 +1062,17 @@ def random_search_hardware(circuit_file, parameter_ranges, shots, hardware_runne
             wait_for_results=True,
             **runner_kwargs
         )
-        
+        logger.info(f"abhishek result_obj: {type(result_obj)}")
+
         # Process result
-        if hasattr(result_obj, "counts") and result_obj.counts and "error" not in result_obj.counts:
+        if isinstance(result_obj, dict) and "counts" in result_obj and result_obj["counts"] and (isinstance(result_obj["counts"], dict) and "error" not in result_obj["counts"]):
             # Calculate metrics from counts
-            counts = result_obj.counts
+            counts = result_obj["counts"]
+            metadata = result_obj.get("metadata", {})
             
             # Debug information
-            logger.debug(f"Counts type: {type(counts)}")
-            logger.debug(f"Counts content: {counts}")
+            logger.info(f"Counts type: {type(counts)}")
+            logger.info(f"Counts content: {counts}")
             
             try:
                 # Check if counts is already a dictionary with string keys and integer values
@@ -1164,8 +1170,8 @@ def random_search_hardware(circuit_file, parameter_ranges, shots, hardware_runne
                     score = 0.5
                     counts = {"0": shots // 2, "1": shots // 2}
             except Exception as e:
-                logger.error(f"Error processing counts: {e}")
-                logger.error(f"Counts data: {type(counts)}: {str(counts)[:200]}")
+                logger.info(f"Error processing counts: {e}")
+                logger.info(f"Counts data: {type(counts)}: {str(counts)[:200]}")
                 # Create default results with non-zero score for fallback
                 probabilities = {"0": 0.5, "1": 0.5}
                 entropy = 1.0
@@ -1183,13 +1189,15 @@ def random_search_hardware(circuit_file, parameter_ranges, shots, hardware_runne
                 "counts": counts,
                 "shots": shots,
                 "parameters": params,
-                "hardware_metadata": result_obj.metadata
+                "hardware_metadata": metadata
             }
             
             results.append(result_dict)
             logger.info(f"Completed {i+1}/{max_circuits} with score {score:.4f}")
         else:
-            logger.warning(f"Failed run {i+1}/{max_circuits}: {getattr(result_obj, 'metadata', {}).get('error', 'Unknown error')}")
+            # Use dictionary access for metadata error, default to 'Unknown error'
+            error_msg = result_obj.get("metadata", {}).get("error", "Unknown error") if isinstance(result_obj, dict) else "Unknown error (Result not a dict)"
+            logger.warning(f"Failed run {i+1}/{max_circuits}: {error_msg}")
     
     # Sort by score (descending)
     results.sort(key=lambda x: x.get("score", 0), reverse=True)
