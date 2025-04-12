@@ -40,49 +40,102 @@ PRICING = {
     }
 }
 
-def calculate_cost(source="openqasm", platform="all", shots=1000, dest="results/cost_estimation"):
+def calculate_cost(source="openqasm", platform="all", shots=1000, dest="results/cost_estimation", resource_file: str | None = None, output_format: str = "text"):
     """Calculate estimated execution costs for running a quantum circuit on various hardware.
     
     Args:
-        source: Source file path (OpenQASM file)
-        platform: Quantum hardware platform(s) to estimate costs for
-        shots: Number of shots to run
-        dest: Destination file for cost estimation results
+        source (str): Source file path (OpenQASM file)
+        platform (str): Quantum hardware platform(s) to estimate costs for
+        shots (int): Number of shots to run
+        dest (str): Destination file for cost estimation results (JSON)
+        resource_file (str | None, optional): Path to a resource estimation file to use instead of analyzing source. Defaults to None.
+        output_format (str, optional): Format for potential console output (currently only affects saving). Defaults to "text".
     
     Returns:
-        Dictionary with cost estimation metrics
+        Optional[Dict[str, Any]]: Dictionary with cost estimation metrics, or None on error.
     """
     try:
-        # Ensure the output directory exists
         dest_path = Path(dest)
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         
-        print(f"Loading circuit from {source}")
-        # TODO: Implement actual loading of OpenQASM file
+        circuit_data = None
+        circuit_name = "Unknown"
+        source_path = Path(source) # Define source_path early
         
-        # Analyze circuit characteristics
-        print(f"Analyzing circuit characteristics")
-        # In a real implementation, we would analyze the circuit to determine:
-        # - Number of qubits
-        # - Circuit depth
-        # - Number of gates
-        # - Hardware-specific requirements
+        # --- Try loading resource data --- 
+        resource_load_attempted = False
+
+        # 1. Try explicit resource_file argument
+        if resource_file:
+            resource_load_attempted = True
+            resource_path = Path(resource_file)
+            if resource_path.is_file():
+                try:
+                    with open(resource_path, 'r') as f:
+                        resource_results = json.load(f)
+                    # Extract data (assuming keys from estimate_resources output)
+                    circuit_data = {
+                        "qubits": resource_results.get('qubit_count', 5),
+                        "depth": resource_results.get('circuit_depth', 10),
+                        "gates": resource_results.get('gate_counts', {'total': 20})
+                    }
+                    circuit_name = resource_results.get('circuit_name', resource_path.stem.replace('_resources', ''))
+                    print(f"Using resource data from specified file: {resource_file}")
+                except Exception as e:
+                    print(f"Warning: Could not read/parse specified resource file {resource_file}: {e}. Will check default location or analyze source.", file=sys.stderr)
+            else:
+                 print(f"Warning: Specified resource file not found: {resource_file}. Will check default location or analyze source.", file=sys.stderr)
+
+        # 2. If explicit file wasn't loaded, try default resource file location
+        if circuit_data is None and not resource_load_attempted: # Only check default if explicit wasn't tried or failed
+            if source_path.is_file(): # Need a valid source path to guess default name
+                default_resource_dir = Path("results/analysis/resources")
+                default_resource_filename = f"{source_path.stem}_resources.json"
+                default_resource_path = default_resource_dir / default_resource_filename
+                
+                if default_resource_path.is_file():
+                    print(f"Found potential default resource file: {default_resource_path}")
+                    resource_load_attempted = True # Mark that we tried loading a resource file
+                    try:
+                        with open(default_resource_path, 'r') as f:
+                            resource_results = json.load(f)
+                        # Extract data
+                        circuit_data = {
+                            "qubits": resource_results.get('qubit_count', 5),
+                            "depth": resource_results.get('circuit_depth', 10),
+                            "gates": resource_results.get('gate_counts', {'total': 20})
+                        }
+                        circuit_name = resource_results.get('circuit_name', source_path.stem)
+                        print(f"Using resource data from default file: {default_resource_path}")
+                    except Exception as e:
+                        print(f"Warning: Could not read/parse default resource file {default_resource_path}: {e}. Will analyze source file.", file=sys.stderr)
+                else:
+                    print(f"Default resource file not found at {default_resource_path}. Will analyze source file.")
+            else:
+                 # Can't guess default if source is invalid
+                 pass # Will proceed to analyze source if source is valid later
+
+        # 3. Analyze source file as fallback
+        if circuit_data is None:
+            if not source_path.is_file(): # Check source validity again
+                 print(f"Error: Source file not found: {source}", file=sys.stderr)
+                 return None
+            print(f"Loading and analyzing circuit from {source}")
+            circuit_data = analyze_circuit(str(source_path)) 
+            circuit_name = source_path.stem # Use source stem if analyzing directly
         
-        # For this example, use some dummy values
-        circuit_data = analyze_circuit(source)
-        
+        if not circuit_data:
+            print("Error: Could not obtain circuit characteristics.", file=sys.stderr)
+            return None
+
         # Calculate costs for each platform
         costs = {}
         
         # Determine which platforms to calculate for
-        platforms = []
-        if platform.lower() == "all":
-            platforms = list(PRICING.keys())
-        else:
-            platforms = [platform.lower()]
+        platforms_to_run = list(PRICING.keys()) if platform.lower() == "all" else [platform.lower()]
         
         # Calculate costs for each platform
-        for plat in platforms:
+        for plat in platforms_to_run:
             if plat in PRICING:
                 costs[plat] = calculate_platform_cost(plat, circuit_data, shots)
         
@@ -107,7 +160,7 @@ def calculate_cost(source="openqasm", platform="all", shots=1000, dest="results/
         # Create the final results
         results = {
             "circuit": {
-                "name": Path(source).stem,
+                "name": circuit_name,
                 "qubits": circuit_data["qubits"],
                 "depth": circuit_data["depth"],
                 "gates": circuit_data["gates"]
@@ -121,9 +174,13 @@ def calculate_cost(source="openqasm", platform="all", shots=1000, dest="results/
         }
         
         # Save results to file
-        with open(dest_path, 'w') as f:
-            json.dump(results, f, indent=2)
-        print(f"Cost estimation results saved to {dest}")
+        try:
+            with open(dest_path, 'w') as f:
+                json.dump(results, f, indent=2)
+            print(f"Cost estimation results saved to {dest_path}")
+        except IOError as e:
+             print(f"Error saving results to {dest_path}: {e}", file=sys.stderr)
+             # Continue to print summary even if save fails
         
         # Print a summary
         print("\nCost Estimation Summary:")

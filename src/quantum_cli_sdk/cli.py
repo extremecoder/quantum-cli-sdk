@@ -253,9 +253,9 @@ def setup_analyze_commands(subparsers):
 
     # analyze cost 
     cost_parser = analyze_subparsers.add_parser("cost", help="Estimate execution cost on different platforms")
-    cost_parser.add_argument("ir_file", help="Path to the input IR file")
+    cost_parser.add_argument("ir_file", nargs='?', default=None, help="Path to the input IR file (OpenQASM). If omitted, searches in ir/openqasm/mitigated/ and uses the first .qasm file found.")
     cost_parser.add_argument("--resource-file", help="Path to resource estimation file (optional input)")
-    cost_parser.add_argument("--output", help="Path to save cost estimation results (JSON)")
+    cost_parser.add_argument("--output", default=None, help="Path to save cost estimation results (JSON). If omitted, defaults to results/analysis/cost/<ir_stem>_cost.json")
     cost_parser.add_argument("--platform", choices=["all", "ibm", "aws", "google"], default="all", 
                            help="Target platform for cost estimation")
     cost_parser.add_argument("--shots", type=int, default=1000, help="Number of shots for execution")
@@ -265,7 +265,6 @@ def setup_analyze_commands(subparsers):
     benchmark_parser = analyze_subparsers.add_parser("benchmark", help="Benchmark circuit performance")
     benchmark_parser.add_argument("ir_file", help="Path to the input IR file")
     benchmark_parser.add_argument("--output", required=True, help="Path to save benchmark results (JSON)")
-    benchmark_parser.add_argument("--shots", type=int, default=1000, help="Number of shots for simulation")
     benchmark_parser.set_defaults(func=lambda args: analyze_benchmark_mod.benchmark(args.ir_file, args.output))
 
 def setup_visualization_commands(subparsers):
@@ -954,22 +953,66 @@ def handle_analyze_commands(args):
             print("Error: Command implementation missing.", file=sys.stderr)
             sys.exit(1)
     elif args.analyze_cmd == "cost":
-        if not args.output:
-            # Default output path if not specified
-            args.output = f"results/cost_estimation/{Path(args.ir_file).stem}_cost.json"
-        
-        # Import the cost calculation module
-        from quantum_cli_sdk.commands import calculate_cost
-        
-        # Call the cost calculation function
-        results = calculate_cost.calculate_cost(
-            source=args.ir_file,
-            platform=args.platform,
-            shots=args.shots,
-            dest=args.output
-        )
-        
-        # The display is already handled in calculate_cost.py
+        if hasattr(calculate_cost, 'calculate_cost'):
+            
+            # Determine input file path
+            input_file_path: Path | None = None
+            if args.ir_file is None:
+                default_ir_dir = Path("ir/openqasm/mitigated")
+                logger.info(f"No IR file specified for cost analysis. Searching in {default_ir_dir}...")
+                input_file_path = find_first_file(default_ir_dir, "*.qasm")
+                if not input_file_path:
+                    logger.error(f"No .qasm file found in {default_ir_dir}. Please specify an input file.")
+                    print(f"Error: No input file specified and no default found in {default_ir_dir}.", file=sys.stderr)
+                    sys.exit(1)
+                logger.info(f"Using default input file for cost analysis: {input_file_path}")
+            else:
+                input_file_path = Path(args.ir_file)
+                if not input_file_path.is_file():
+                     logger.error(f"Specified input file not found: {input_file_path}")
+                     print(f"Error: Input file not found: {input_file_path}", file=sys.stderr)
+                     sys.exit(1)
+
+            # Determine output file path
+            output_file_path: Path | None = None
+            if args.output is None:
+                default_output_dir = Path("results/analysis/cost")
+                default_output_dir.mkdir(parents=True, exist_ok=True)
+                output_filename = f"{input_file_path.stem}_cost.json"
+                output_file_path = default_output_dir / output_filename
+                logger.info(f"No output file specified for cost analysis. Defaulting to: {output_file_path}")
+            else:
+                output_file_path = Path(args.output)
+                output_file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            try:
+                # Call the cost calculation function
+                # Assume it handles saving to dest and printing summary
+                results = calculate_cost.calculate_cost(
+                    source=str(input_file_path),
+                    resource_file=args.resource_file, 
+                    dest=str(output_file_path),
+                    platform=args.platform,
+                    shots=args.shots,
+                    output_format=args.format 
+                )
+                
+                # Minimal handling here: maybe print JSON if requested and returned
+                if args.format == "json" and results:
+                    try: print(json.dumps(results, indent=2))
+                    except TypeError: logger.debug("calculate_cost returned non-JSON data")
+                # Rely on calculate_cost for text summary printout
+                                
+                # Success
+                sys.exit(0)
+            except Exception as e:
+                logger.error(f"Cost calculation failed for {input_file_path}: {e}", exc_info=True)
+                print(f"Error during cost calculation: {e}", file=sys.stderr)
+                sys.exit(1)
+        else:
+            logger.error("calculate_cost function not found. Cannot execute command.")
+            print("Error: Command implementation missing.", file=sys.stderr)
+            sys.exit(1)
     elif args.analyze_cmd == "benchmark":
         if not args.output:
             # Default output path if not specified
