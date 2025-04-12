@@ -107,25 +107,19 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Generate Base OpenQASM IR
+      - name: Generate Base OpenQASM IR # IR generation
         run: |
-          mkdir -p ir/base
-          # Generate IR using the source file and default destination path
-          quantum-cli ir generate \
-            --source source/circuits/${{ matrix.source_file }}
-          echo "Generated Base OpenQASM IR for ${{ matrix.source_file }} with default destination"
           
-          # Also generate to the explicit openqasm directory for backward compatibility
-          mkdir -p ir/openqasm
-          quantum-cli ir generate \
+          mkdir -p ir/openqasm/base
+          quantum-cli ir generate \ 
             --source source/circuits/${{ matrix.source_file }} \
-            --dest ir/openqasm/${{ matrix.source_file }}.qasm
+            --dest ir/openqasm/base/${{ matrix.source_file }}.qasm
           echo "Generated Base OpenQASM IR for ${{ matrix.source_file }} in openqasm directory"
 
       - name: Commit generated IR
         run: |
-          git add ir/base/
-          git add ir/openqasm/${{ matrix.source_file }}.qasm
+          
+          git add ir/openqasm/base/${{ matrix.source_file }}.qasm
           # Commit only if changes detected
           git diff --staged --quiet || git commit -m "ci: Generate base OpenQASM for ${{ matrix.source_file }}"
           # Retry push on transient errors
@@ -157,28 +151,15 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Validate Base OpenQASM IR
+      - name: Validate Base OpenQASM IR # IR Validation
         run: |
           mkdir -p results/validation
-          
-          # First check the default output location
-          BASE_FILE="ir/base/${{ matrix.source_file }}.qasm"
-          if [ -f "$BASE_FILE" ]; then
-            quantum-cli ir validate \
-              "$BASE_FILE" \
-              --output results/validation/${{ matrix.source_file }}_base.json
-            echo "Validated Base OpenQASM for ${{ matrix.source_file }} from default location"
-          else
-            echo "Default IR file not found: $BASE_FILE"
-            mkdir -p results/validation && echo '{"status": "skipped", "reason": "Default IR file not found"}' > results/validation/${{ matrix.source_file }}_base.json
-          fi
-          
-          # Also check the openqasm directory for backward compatibility
-          OPENQASM_FILE="ir/openqasm/${{ matrix.source_file }}.qasm"
+         
+          OPENQASM_FILE="ir/openqasm/base/${{ matrix.source_file }}.qasm"
           if [ -f "$OPENQASM_FILE" ]; then
             quantum-cli ir validate \
               "$OPENQASM_FILE" \
-              --output results/validation/${{ matrix.source_file }}.json
+              --output-file results/validation/${{ matrix.source_file }}.json
             echo "Validated Base OpenQASM for ${{ matrix.source_file }} from openqasm directory"
           else
             echo "Skipping validation, IR file not found: $OPENQASM_FILE"
@@ -187,7 +168,7 @@ jobs:
 
       - name: Commit validation results
         run: |
-          git add results/validation/${{ matrix.source_file }}_base.json
+          
           git add results/validation/${{ matrix.source_file }}.json
           git diff --staged --quiet || git commit -m "ci: Add validation results for ${{ matrix.source_file }}"
           git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for validation results ${{ matrix.source_file }}"
@@ -224,7 +205,7 @@ jobs:
           mkdir -p results/security
           
           # First check the default output location
-          BASE_FILE="ir/base/${{ matrix.source_file }}.qasm"
+          BASE_FILE="ir/openqasm/base/${{ matrix.source_file }}.qasm"
           if [ -f "$BASE_FILE" ]; then
             quantum-cli security scan \
               "$BASE_FILE" \
@@ -236,11 +217,11 @@ jobs:
           fi
           
           # Also check the openqasm directory for backward compatibility
-          OPENQASM_FILE="ir/openqasm/${{ matrix.source_file }}.qasm"
+          OPENQASM_FILE="ir/openqasm/base/${{ matrix.source_file }}.qasm"
           if [ -f "$OPENQASM_FILE" ]; then
             quantum-cli security scan \
               "$OPENQASM_FILE" \
-              --output results/security/${{ matrix.source_file }}.json
+              --output-file results/security/${{ matrix.source_file }}.json
             echo "Security scan completed for ${{ matrix.source_file }} from openqasm directory"
           else
              echo "Skipping security scan, IR file not found: $OPENQASM_FILE"
@@ -287,29 +268,16 @@ jobs:
 
       - name: Optimize Base OpenQASM IR
         run: |
-          mkdir -p ir/optimized
-          
-          # First try the default base location
-          BASE_FILE="ir/base/${{ matrix.source_file }}.qasm"
-          if [ -f "$BASE_FILE" ]; then
-            # Standard optimization (level 2)
-            quantum-cli ir optimize \
-              --input-file "$BASE_FILE" \
-              --output-file "ir/optimized/${{ matrix.source_file }}_base.qasm" \
-              --level 2 \
-              --format json
-            echo "Optimized Base IR for ${{ matrix.source_file }} from default location"
-          else
-            echo "Default IR file not found for optimization: $BASE_FILE"
-          fi
+          mkdir -p ir/openqasm/optimized
+       
           
           # Also try the openqasm directory for backward compatibility
-          OPENQASM_FILE="ir/openqasm/${{ matrix.source_file }}.qasm"
+          OPENQASM_FILE="ir/openqasm/base/${{ matrix.source_file }}.qasm"
           if [ -f "$OPENQASM_FILE" ]; then
             # Standard optimization (level 2)
             quantum-cli ir optimize \
               --input-file "$OPENQASM_FILE" \
-              --output-file "ir/optimized/${{ matrix.source_file }}.qasm" \
+              --output-file "ir/openqasm/optimized/${{ matrix.source_file }}.qasm" \
               --level 2 \
               --format json
             echo "Optimized Base IR for ${{ matrix.source_file }} from openqasm directory"
@@ -321,8 +289,8 @@ jobs:
         run: |
           # We may have both or either one of the files
           # Only attempt to add if files exist (avoids git errors)
-          [ -f "ir/optimized/${{ matrix.source_file }}_base.qasm" ] && git add "ir/optimized/${{ matrix.source_file }}_base.qasm"
-          [ -f "ir/optimized/${{ matrix.source_file }}.qasm" ] && git add "ir/optimized/${{ matrix.source_file }}.qasm"
+          # [ -f "ir/openqasm/optimized/${{ matrix.source_file }}_base.qasm" ] && git add "ir/openqasm/optimized/${{ matrix.source_file }}_base.qasm"
+          [ -f "ir/openqasm/optimized/${{ matrix.source_file }}.qasm" ] && git add "ir/openqasm/optimized/${{ matrix.source_file }}.qasm"
           # Only commit if any changes were staged
           git diff --staged --quiet || git commit -m "ci: Add optimized IR for ${{ matrix.source_file }}"
           git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for optimized IR ${{ matrix.source_file }}"
@@ -416,7 +384,7 @@ jobs:
           mkdir -p results/simulation/base/${{ matrix.platform }}
           if [ -f "ir/openqasm/${{ matrix.source_file }}.qasm" ]; then
             quantum-cli run simulate \
-              ir/openqasm/${{ matrix.source_file }}.qasm \
+              ir/openqasm/base/${{ matrix.source_file }}.qasm \
               --backend ${{ matrix.platform }} \
               --shots ${{ needs.setup.outputs.shots }} \
               --output results/simulation/base/${{ matrix.platform }}/${{ matrix.source_file }}.json
@@ -577,8 +545,8 @@ jobs:
       - name: Commit generated tests
         run: |
           # Only add if the file was actually generated
-          if [ -f "tests/generated/test_${{ matrix.source_file }}.py" ]; then
-            git add tests/generated/test_${{ matrix.source_file }}.py
+          if [ -f "tests/generated/${{ matrix.source_file }}_test.py" ]; then
+            git add tests/generated/${{ matrix.source_file }}_test.py
             git diff --staged --quiet || git commit -m "ci: Add generated unit tests for ${{ matrix.source_file }}"
             git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for generated tests ${{ matrix.source_file }}"
           else
@@ -616,8 +584,8 @@ jobs:
         run: |
           # Standardized path for results
           mkdir -p results/tests/unit
-          TEST_FILE="tests/generated/test_${{ matrix.source_file }}.py"
-          RESULT_FILE="results/tests/unit/${{ matrix.source_file }}.json"
+          TEST_FILE="tests/generated/${{ matrix.source_file }}_test.py"
+          RESULT_FILE="results/tests/unit/${{ matrix.source_file }}_test_results.json"
 
           if [ -f "$TEST_FILE" ]; then
             # Use our newly implemented test run command
@@ -632,7 +600,7 @@ jobs:
 
       - name: Commit test results
         run: |
-          git add results/tests/unit/${{ matrix.source_file }}.json
+          git add results/tests/unit/${{ matrix.source_file }}_test_results.json
           git diff --staged --quiet || git commit -m "ci: Add unit test results for ${{ matrix.source_file }}"
           git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for unit test results ${{ matrix.source_file }}"
 
@@ -673,7 +641,7 @@ jobs:
           if [ -f "ir/openqasm/mitigated/${{ matrix.source_file }}.qasm" ]; then
             quantum-cli analyze resources \
               ir/openqasm/mitigated/${{ matrix.source_file }}.qasm \
-              --output results/analysis/resources/${{ matrix.source_file }}.json \
+              --output results/analysis/resources/${{ matrix.source_file }}_resources.json \
               --format json
             echo "Estimated resources for mitigated IR: ${{ matrix.source_file }}"
           else
@@ -683,7 +651,7 @@ jobs:
 
       - name: Commit resource estimation results
         run: |
-          git add results/analysis/resources/${{ matrix.source_file }}.json
+          git add results/analysis/resources/${{ matrix.source_file }}_resources.json
           git diff --staged --quiet || git commit -m "ci: Add resource estimation for ${{ matrix.source_file }}"
           git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for resource estimation ${{ matrix.source_file }}"
 
@@ -722,8 +690,8 @@ jobs:
           if [ -f "ir/openqasm/mitigated/${{ matrix.source_file }}.qasm" ]; then
             quantum-cli analyze cost \
               ir/openqasm/mitigated/${{ matrix.source_file }}.qasm \
-              --resource-file results/analysis/resources/${{ matrix.source_file }}.json \
-              --output results/analysis/cost/${{ matrix.source_file }}.json \
+              --resource-file results/analysis/resources/${{ matrix.source_file }}_resources.json \
+              --output results/analysis/cost/${{ matrix.source_file }}_cost.json \
               --format json
             echo "Estimated cost for mitigated IR: ${{ matrix.source_file }}"
           else
@@ -733,7 +701,7 @@ jobs:
 
       - name: Commit cost estimation results
         run: |
-          git add results/analysis/cost/${{ matrix.source_file }}.json
+          git add results/analysis/cost/${{ matrix.source_file }}_cost.json
           git diff --staged --quiet || git commit -m "ci: Add cost estimation for ${{ matrix.source_file }}"
           git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for cost estimation ${{ matrix.source_file }}"
 
@@ -771,7 +739,7 @@ jobs:
           if [ -f "ir/openqasm/mitigated/${{ matrix.source_file }}.qasm" ]; then
             quantum-cli analyze benchmark \
               ir/openqasm/mitigated/${{ matrix.source_file }}.qasm \
-              --output results/analysis/benchmark/${{ matrix.source_file }}.json
+              --output results/analysis/benchmark/${{ matrix.source_file }}_benchmark.json
             echo "Benchmarked mitigated circuit for ${{ matrix.source_file }}"
           else
             echo "Skipping benchmark, mitigated IR not found: ir/openqasm/mitigated/${{ matrix.source_file }}.qasm"
@@ -780,7 +748,8 @@ jobs:
 
       - name: Commit benchmark results
         run: |
-          git add results/analysis/benchmark/${{ matrix.source_file }}.json
+          git add results/analysis/benchmark/${{ matrix.source_file }}_benchmark.json
+          git add results/analysis/benchmark/
           git diff --staged --quiet || git commit -m "ci: Add benchmark results for ${{ matrix.source_file }}"
           git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for benchmark results ${{ matrix.source_file }}"
 
@@ -820,7 +789,7 @@ jobs:
           if [ -f "ir/openqasm/mitigated/${{ matrix.source_file }}.qasm" ]; then
             quantum-cli ir finetune \
               --input-file ir/openqasm/mitigated/${{ matrix.source_file }}.qasm \
-              --output-file results/analysis/finetuning/${{ matrix.source_file }}.json \
+              --output-file results/analysis/finetuning/${{ matrix.source_file }}_finetune_results.json \
               --hardware ibm
             echo "Fine-tuned mitigated circuit for ${{ matrix.source_file }}"
           else
@@ -830,328 +799,324 @@ jobs:
 
       - name: Commit fine-tuning results
         run: |
-          git add results/analysis/finetuning/${{ matrix.source_file }}.json
+          git add results/analysis/finetuning/${{ matrix.source_file }}_finetune_results.json
           # Potentially add finetuned IR file here if applicable
           git diff --staged --quiet || git commit -m "ci: Add fine-tuning results for ${{ matrix.source_file }}"
           git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for fine-tuning results ${{ matrix.source_file }}"
 
-  # --------------------------------------------------------------------------
+ 
   # Microservice Generation & Testing
-  # --------------------------------------------------------------------------
-  # Commented out as these commands are not yet implemented according to TASK.md
-  # generate-microservice:
-  #   # Generate after all IR processing and analysis/finetuning is complete
-  #   needs: finetune
-  #   runs-on: ubuntu-latest
-  #   strategy:
-  #     matrix:
-  #       source_file: ${{ fromJson(needs.setup.outputs.source_files) }}
-  #     fail-fast: false
-  #   steps:
-  #     - name: Checkout repository
-  #       uses: actions/checkout@v4
-  #       with:
-  #         fetch-depth: 0
-  #         token: ${{ secrets.GITHUB_TOKEN }}
-  #     - name: Set up Python
-  #       uses: actions/setup-python@v4
-  #       with:
-  #         python-version: '3.10'
-  #     - name: Install dependencies
-  #       run: |
-  #         pip install quantum-cli-sdk
-  #         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-  #     - name: Configure Git
-  #       run: |
-  #         git config --local user.name "github-actions[bot]"
-  #         git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+ 
+  
+  generate-microservice:
+    # Generate after all IR processing and analysis/finetuning is complete
+    needs: finetune
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        source_file: ${{ fromJson(needs.setup.outputs.source_files) }}
+      fail-fast: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          pip install quantum-cli-sdk
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Configure Git
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-  #     - name: Generate Microservice from Mitigated IR
-  #       run: |
-  #         BASE_NAME=$(echo "${{ matrix.source_file }}" | sed 's/\.py$//')
-  #         # Standardized path
-  #         SERVICE_DIR="services/generated/$BASE_NAME"
-  #         mkdir -p "$SERVICE_DIR"
+      - name: Generate Microservice from Mitigated IR
+        run: |
+          BASE_NAME=$(echo "${{ matrix.source_file }}" | sed 's/\.py$//')
+          # Standardized path
+          SERVICE_DIR="services/generated/$BASE_NAME"
+          mkdir -p "$SERVICE_DIR"
 
-  #         if [ -f "ir/openqasm/mitigated/${{ matrix.source_file }}.qasm" ]; then
-  #           # Generate microservice source code
-  #           quantum-cli service generate \
-  #             ir/openqasm/mitigated/${{ matrix.source_file }}.qasm \
-  #             --output-dir "$SERVICE_DIR"
-  #           # Copy the relevant IR into the service directory? Assume generate handles this or package step does.
-  #           echo "Generated microservice source for $BASE_NAME"
-  #         else
-  #           echo "Skipping microservice generation, mitigated IR not found: ir/openqasm/mitigated/${{ matrix.source_file }}.qasm"
-  #           # Create a placeholder file? Or just log? Log is safer.
-  #         fi
+          if [ -f "ir/openqasm/mitigated/${{ matrix.source_file }}.qasm" ]; then
+            # Generate microservice source code
+            quantum-cli service generate \
+              ir/openqasm/mitigated/${{ matrix.source_file }}.qasm \
+              --output-dir "$SERVICE_DIR"
+            # Copy the relevant IR into the service directory? Assume generate handles this or package step does.
+            echo "Generated microservice source for $BASE_NAME"
+          else
+            echo "Skipping microservice generation, mitigated IR not found: ir/openqasm/mitigated/${{ matrix.source_file }}.qasm"
+            # Create a placeholder file? Or just log? Log is safer.
+          fi
 
-  #     - name: Commit generated microservice source
-  #       run: |
-  #         BASE_NAME=$(echo "${{ matrix.source_file }}" | sed 's/\.py$//')
-  #         SERVICE_DIR="services/generated/$BASE_NAME"
-  #         if [ -d "$SERVICE_DIR" ]; then
-  #            # Add the whole directory
-  #           git add "$SERVICE_DIR"
-  #           git diff --staged --quiet || git commit -m "ci: Add generated microservice source for $BASE_NAME"
-  #           git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for microservice source $BASE_NAME"
-  #         else
-  #           echo "No microservice directory to commit for $BASE_NAME"
-  #         fi
+      - name: Commit generated microservice source
+        run: |
+          BASE_NAME=$(echo "${{ matrix.source_file }}" | sed 's/\.py$//')
+          SERVICE_DIR="services/generated/$BASE_NAME"
+          if [ -d "$SERVICE_DIR" ]; then
+             # Add the whole directory
+            git add "$SERVICE_DIR"
+            git diff --staged --quiet || git commit -m "ci: Add generated microservice source for $BASE_NAME"
+            git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for microservice source $BASE_NAME"
+          else
+            echo "No microservice directory to commit for $BASE_NAME"
+          fi
 
-  # generate-microservice-tests:
-  #   # Generate tests after the microservice source exists
-  #   needs: generate-microservice
-  #   runs-on: ubuntu-latest
-  #   strategy:
-  #     matrix:
-  #       source_file: ${{ fromJson(needs.setup.outputs.source_files) }}
-  #     fail-fast: false
-  #   steps:
-  #     - name: Checkout repository
-  #       uses: actions/checkout@v4
-  #       with:
-  #         fetch-depth: 0
-  #         token: ${{ secrets.GITHUB_TOKEN }}
-  #     - name: Set up Python
-  #       uses: actions/setup-python@v4
-  #       with:
-  #         python-version: '3.10'
-  #     - name: Install dependencies
-  #       run: |
-  #         pip install quantum-cli-sdk
-  #         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-  #     - name: Configure Git
-  #       run: |
-  #         git config --local user.name "github-actions[bot]"
-  #         git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+  generate-microservice-tests:
+    # Generate tests after the microservice source exists
+    needs: generate-microservice
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        source_file: ${{ fromJson(needs.setup.outputs.source_files) }}
+      fail-fast: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          pip install quantum-cli-sdk
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Configure Git
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-  #     - name: Generate Microservice Tests
-  #       run: |
-  #         BASE_NAME=$(echo "${{ matrix.source_file }}" | sed 's/\.py$//')
-  #         SERVICE_DIR="services/generated/$BASE_NAME"
-  #         # Output tests within the service directory structure
-  #         TEST_OUTPUT_DIR="$SERVICE_DIR/tests"
+      - name: Generate Microservice Tests
+        run: |
+          BASE_NAME=$(echo "${{ matrix.source_file }}" | sed 's/\.py$//')
+          SERVICE_DIR="services/generated/$BASE_NAME"
+          # Output tests within the service directory structure
+          TEST_OUTPUT_DIR="$SERVICE_DIR/tests"
 
-  #         if [ -d "$SERVICE_DIR" ]; then
-  #           quantum-cli service test-generate \
-  #             "$SERVICE_DIR" \
-  #             --output "$TEST_OUTPUT_DIR"
-  #           echo "Generated microservice tests for $BASE_NAME"
-  #         else
-  #           echo "Skipping microservice test generation, service directory not found: $SERVICE_DIR"
-  #         fi
+          if [ -d "$SERVICE_DIR" ]; then
+            quantum-cli service test-generate \
+              "$SERVICE_DIR" \
+              --output "$TEST_OUTPUT_DIR"
+            echo "Generated microservice tests for $BASE_NAME"
+          else
+            echo "Skipping microservice test generation, service directory not found: $SERVICE_DIR"
+          fi
 
-  #     - name: Commit generated microservice tests
-  #       run: |
-  #         BASE_NAME=$(echo "${{ matrix.source_file }}" | sed 's/\.py$//')
-  #         TEST_OUTPUT_DIR="services/generated/$BASE_NAME/tests"
-  #         if [ -d "$TEST_OUTPUT_DIR" ]; then
-  #           git add "$TEST_OUTPUT_DIR"
-  #           git diff --staged --quiet || git commit -m "ci: Add generated microservice tests for $BASE_NAME"
-  #           git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for microservice tests $BASE_NAME"
-  #         else
-  #            echo "No microservice test directory to commit for $BASE_NAME"
-  #         fi
+      - name: Commit generated microservice tests
+        run: |
+          BASE_NAME=$(echo "${{ matrix.source_file }}" | sed 's/\.py$//')
+          TEST_OUTPUT_DIR="services/generated/$BASE_NAME/tests"
+          if [ -d "$TEST_OUTPUT_DIR" ]; then
+            git add "$TEST_OUTPUT_DIR"
+            git diff --staged --quiet || git commit -m "ci: Add generated microservice tests for $BASE_NAME"
+            git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for microservice tests $BASE_NAME"
+          else
+             echo "No microservice test directory to commit for $BASE_NAME"
+          fi
 
-  # run-microservice-tests:
-  #   # Run tests after they are generated
-  #   needs: generate-microservice-tests
-  #   runs-on: ubuntu-latest
-  #   strategy:
-  #     matrix:
-  #       source_file: ${{ fromJson(needs.setup.outputs.source_files) }}
-  #     fail-fast: false # Allow other service tests to run
-  #   steps:
-  #     - name: Checkout repository
-  #       uses: actions/checkout@v4
-  #       with:
-  #         fetch-depth: 0
-  #         token: ${{ secrets.GITHUB_TOKEN }}
-  #     - name: Set up Python
-  #       uses: actions/setup-python@v4
-  #       with:
-  #         python-version: '3.10'
-  #     - name: Set up Docker Buildx (required for service test run)
-  #       uses: docker/setup-buildx-action@v2
-  #     - name: Install dependencies
-  #       run: |
-  #         pip install quantum-cli-sdk
-  #         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-  #     - name: Configure Git
-  #       run: |
-  #         git config --local user.name "github-actions[bot]"
-  #         git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+  run-microservice-tests:
+    # Run tests after they are generated
+    needs: generate-microservice-tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        source_file: ${{ fromJson(needs.setup.outputs.source_files) }}
+      fail-fast: false # Allow other service tests to run
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Set up Docker Buildx (required for service test run)
+        uses: docker/setup-buildx-action@v2
+      - name: Install dependencies
+        run: |
+          pip install quantum-cli-sdk
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Configure Git
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-  #     - name: Run Microservice Tests
-  #       run: |
-  #         BASE_NAME=$(echo "${{ matrix.source_file }}" | sed 's/\.py$//')
-  #         SERVICE_DIR="services/generated/$BASE_NAME"
-  #         TEST_DIR="$SERVICE_DIR/tests"
-  #         # Standardized results path
-  #         RESULT_DIR="results/tests/service"
-  #         RESULT_FILE="$RESULT_DIR/${{ matrix.source_file }}.json"
-  #         mkdir -p "$RESULT_DIR"
+      - name: Run Microservice Tests
+        run: |
+          BASE_NAME=$(echo "${{ matrix.source_file }}" | sed 's/\.py$//')
+          SERVICE_DIR="services/generated/$BASE_NAME"
+          TEST_DIR="$SERVICE_DIR/tests"
+          # Standardized results path
+          RESULT_DIR="results/tests/service"
+          RESULT_FILE="$RESULT_DIR/${{ matrix.source_file }}.json"
+          mkdir -p "$RESULT_DIR"
 
-  #         if [ -d "$SERVICE_DIR" ] && [ -d "$TEST_DIR" ]; then
-  #           # Build and run tests using the CLI command (assumes Docker interaction)
-  #           quantum-cli service test-run \
-  #             "$SERVICE_DIR" \
-  #             --test-dir "$TEST_DIR" \
-  #             --output "$RESULT_FILE"
-  #           echo "Ran microservice tests for $BASE_NAME"
-  #         else
-  #           echo "Skipping microservice tests, service or test directory not found for $BASE_NAME"
-  #           echo '{"status": "skipped", "reason": "Service or test directory not found"}' > "$RESULT_FILE"
-  #         fi
+          if [ -d "$SERVICE_DIR" ] && [ -d "$TEST_DIR" ]; then
+            # Build and run tests using the CLI command (assumes Docker interaction)
+            quantum-cli service test-run \
+              "$SERVICE_DIR" \
+              --test-dir "$TEST_DIR" \
+              --output "$RESULT_FILE"
+            echo "Ran microservice tests for $BASE_NAME"
+          else
+            echo "Skipping microservice tests, service or test directory not found for $BASE_NAME"
+            echo '{"status": "skipped", "reason": "Service or test directory not found"}' > "$RESULT_FILE"
+          fi
 
-  #     - name: Commit microservice test results
-  #       run: |
-  #         RESULT_FILE="results/tests/service/${{ matrix.source_file }}.json"
-  #         git add "$RESULT_FILE"
-  #         git diff --staged --quiet || git commit -m "ci: Add microservice test results for ${{ matrix.source_file }}"
-  #         git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for microservice test results ${{ matrix.source_file }}"
+      - name: Commit microservice test results
+        run: |
+          RESULT_FILE="results/tests/service/${{ matrix.source_file }}.json"
+          git add "$RESULT_FILE"
+          git diff --staged --quiet || git commit -m "ci: Add microservice test results for ${{ matrix.source_file }}"
+          git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for microservice test results ${{ matrix.source_file }}"
 
-  # --------------------------------------------------------------------------
-  # Packaging & Publishing
-  # --------------------------------------------------------------------------
-  # Commented out as these commands are not yet implemented according to TASK.md
-  # package:
-  #   # Depends on service tests running and resource estimation for metadata
-  #   needs: [run-tests, resource-estimation]
-  #   runs-on: ubuntu-latest
-  #   strategy:
-  #     matrix:
-  #       source_file: ${{ fromJson(needs.setup.outputs.source_files) }}
-  #     fail-fast: false
-  #   steps:
-  #     - name: Checkout repository
-  #       uses: actions/checkout@v4
-  #       with:
-  #         fetch-depth: 0
-  #         token: ${{ secrets.GITHUB_TOKEN }}
-  #     - name: Set up Python
-  #       uses: actions/setup-python@v4
-  #       with:
-  #         python-version: '3.10'
-  #     - name: Install dependencies
-  #       run: |
-  #         pip install quantum-cli-sdk
-  #         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-  #     - name: Configure Git
-  #       run: |
-  #         git config --local user.name "github-actions[bot]"
-  #         git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+  
+  package:
+    # Depends on service tests running and resource estimation for metadata
+    needs: [run-tests, resource-estimation]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        source_file: ${{ fromJson(needs.setup.outputs.source_files) }}
+      fail-fast: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          pip install quantum-cli-sdk
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Configure Git
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-  #     - name: Package Application
-  #       run: |
-  #         BASE_NAME=$(echo "${{ matrix.source_file }}" | sed 's/\.py$//')
-  #         SERVICE_DIR="services/generated/$BASE_NAME"
-  #         CIRCUIT_FILE="ir/openqasm/mitigated/${{ matrix.source_file }}.qasm"
-  #         # Use standardized resource estimation path
-  #         METADATA_FILE="results/analysis/resources/${{ matrix.source_file }}.json"
-  #         OUTPUT_PATH="dist/$BASE_NAME.zip"
-  #         mkdir -p dist
+      - name: Package Application
+        run: |
+          BASE_NAME=$(echo "${{ matrix.source_file }}" | sed 's/\.py$//')
+          SERVICE_DIR="services/generated/$BASE_NAME"
+          CIRCUIT_FILE="ir/openqasm/mitigated/${{ matrix.source_file }}.qasm"
+          # Use standardized resource estimation path
+          METADATA_FILE="results/analysis/resources/${{ matrix.source_file }}.json"
+          OUTPUT_PATH="dist/$BASE_NAME.zip"
+          mkdir -p dist
 
-  #         # Check required files exist before packaging
-  #         if [ -d "$SERVICE_DIR" ] && [ -f "$CIRCUIT_FILE" ] && [ -f "$METADATA_FILE" ]; then
-  #           quantum-cli package create \
-  #             --source-dir "$SERVICE_DIR" \
-  #             --circuit-file "$CIRCUIT_FILE" \
-  #             --metadata-file "$METADATA_FILE" \
-  #             --output-path "$OUTPUT_PATH"
-  #           echo "Packaged application for $BASE_NAME"
-  #         else
-  #           echo "Skipping packaging for $BASE_NAME, required files/directories missing."
-  #           echo "SERVICE_DIR exists: $(test -d $SERVICE_DIR && echo yes || echo no)"
-  #           echo "CIRCUIT_FILE exists: $(test -f $CIRCUIT_FILE && echo yes || echo no)"
-  #           echo "METADATA_FILE exists: $(test -f $METADATA_FILE && echo yes || echo no)"
-  #           # Fail the step? Or just log? Logging for now.
-  #         fi
+          # Check required files exist before packaging
+          if [ -d "$SERVICE_DIR" ] && [ -f "$CIRCUIT_FILE" ] && [ -f "$METADATA_FILE" ]; then
+            quantum-cli package create \
+              --source-dir "$SERVICE_DIR" \
+              --circuit-file "$CIRCUIT_FILE" \
+              --metadata-file "$METADATA_FILE" \
+              --output-path "$OUTPUT_PATH"
+            echo "Packaged application for $BASE_NAME"
+          else
+            echo "Skipping packaging for $BASE_NAME, required files/directories missing."
+            echo "SERVICE_DIR exists: $(test -d $SERVICE_DIR && echo yes || echo no)"
+            echo "CIRCUIT_FILE exists: $(test -f $CIRCUIT_FILE && echo yes || echo no)"
+            echo "METADATA_FILE exists: $(test -f $METADATA_FILE && echo yes || echo no)"
+            # Fail the step? Or just log? Logging for now.
+          fi
 
-  #     - name: Commit package
-  #       run: |
-  #         BASE_NAME=$(echo "${{ matrix.source_file }}" | sed 's/\.py$//')
-  #         OUTPUT_PATH="dist/$BASE_NAME.zip"
-  #         if [ -f "$OUTPUT_PATH" ]; then
-  #           git add "$OUTPUT_PATH"
-  #           git diff --staged --quiet || git commit -m "ci: Add application package for $BASE_NAME"
-  #           git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for package $BASE_NAME"
-  #         else
-  #           echo "No package file to commit for $BASE_NAME"
-  #         fi
+      - name: Commit package
+        run: |
+          BASE_NAME=$(echo "${{ matrix.source_file }}" | sed 's/\.py$//')
+          OUTPUT_PATH="dist/$BASE_NAME.zip"
+          if [ -f "$OUTPUT_PATH" ]; then
+            git add "$OUTPUT_PATH"
+            git diff --staged --quiet || git commit -m "ci: Add application package for $BASE_NAME"
+            git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for package $BASE_NAME"
+          else
+            echo "No package file to commit for $BASE_NAME"
+          fi
 
-  # publish:
-  #   # Depends on the package being created
-  #   needs: package
-  #   runs-on: ubuntu-latest
-  #   strategy:
-  #     matrix:
-  #       source_file: ${{ fromJson(needs.setup.outputs.source_files) }}
-  #     fail-fast: false
-  #   # Only run on pushes to main/master, not on PRs by default
-  #   if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-  #   steps:
-  #     - name: Checkout repository (needed to find package)
-  #       uses: actions/checkout@v4
-  #       with:
-  #         fetch-depth: 0 # Fetch history if needed, maybe shallow is fine
-  #         token: ${{ secrets.GITHUB_TOKEN }}
-  #     - name: Set up Python
-  #       uses: actions/setup-python@v4
-  #       with:
-  #         python-version: '3.10'
-  #     - name: Install dependencies
-  #       run: |
-  #         pip install quantum-cli-sdk
-  #         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+  publish:
+    # Depends on the package being created
+    needs: package
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        source_file: ${{ fromJson(needs.setup.outputs.source_files) }}
+      fail-fast: false
+    # Only run on pushes to main/master, not on PRs by default
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout repository (needed to find package)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch history if needed, maybe shallow is fine
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          pip install quantum-cli-sdk
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-  #     - name: Publish Application to Quantum Hub
-  #       env:
-  #         # Use secrets for credentials
-  #         QUANTUM_HUB_USERNAME: ${{ secrets.QUANTUM_HUB_USERNAME }}
-  #         QUANTUM_HUB_TOKEN: ${{ secrets.QUANTUM_HUB_TOKEN }}
-  #       run: |
-  #         BASE_NAME=$(echo "${{ matrix.source_file }}" | sed 's/\.py$//')
-  #         PACKAGE_PATH="dist/$BASE_NAME.zip"
+      - name: Publish Application to Quantum Hub
+        env:
+          # Use secrets for credentials
+          QUANTUM_HUB_USERNAME: ${{ secrets.QUANTUM_HUB_USERNAME }}
+          QUANTUM_HUB_TOKEN: ${{ secrets.QUANTUM_HUB_TOKEN }}
+        run: |
+          BASE_NAME=$(echo "${{ matrix.source_file }}" | sed 's/\.py$//')
+          PACKAGE_PATH="dist/$BASE_NAME.zip"
 
-  #         # Check if credentials and package exist
-  #         if [ -z "${QUANTUM_HUB_USERNAME}" ] || [ -z "${QUANTUM_HUB_TOKEN}" ]; then
-  #           echo "Quantum Hub credentials (QUANTUM_HUB_USERNAME, QUANTUM_HUB_TOKEN) not found in secrets. Skipping publish step."
-  #         elif [ ! -f "$PACKAGE_PATH" ]; then
-  #           echo "Package file not found at $PACKAGE_PATH. Skipping publish step."
-  #         else
-  #           # Publish to Quantum Hub
-  #           quantum-cli hub publish \
-  #             "$PACKAGE_PATH" \
-  #             --username "${QUANTUM_HUB_USERNAME}" \
-  #             --token "${QUANTUM_HUB_TOKEN}"
-  #           echo "Published $PACKAGE_PATH to Quantum Hub"
-  #         fi
+          # Check if credentials and package exist
+          if [ -z "${QUANTUM_HUB_USERNAME}" ] || [ -z "${QUANTUM_HUB_TOKEN}" ]; then
+            echo "Quantum Hub credentials (QUANTUM_HUB_USERNAME, QUANTUM_HUB_TOKEN) not found in secrets. Skipping publish step."
+          elif [ ! -f "$PACKAGE_PATH" ]; then
+            echo "Package file not found at $PACKAGE_PATH. Skipping publish step."
+          else
+            # Publish to Quantum Hub
+            quantum-cli hub publish \
+              "$PACKAGE_PATH" \
+              --username "${QUANTUM_HUB_USERNAME}" \
+              --token "${QUANTUM_HUB_TOKEN}"
+            echo "Published $PACKAGE_PATH to Quantum Hub"
+          fi
 
-  # Optional: Job to delete the enhanced pipeline file if this one is stable
-  # cleanup-old-pipeline:
-  #   needs: [publish] # Run after everything else successfully finishes
-  #   runs-on: ubuntu-latest
-  #   if: success() && (github.event_name == 'push' && github.ref == 'refs/heads/main') # Only on successful push to main
-  #   steps:
-  #     - name: Checkout repository
-  #       uses: actions/checkout@v4
-  #       with:
-  #         token: ${{ secrets.GITHUB_TOKEN }}
-  #     - name: Configure Git
-  #       run: |
-  #         git config --local user.name "github-actions[bot]"
-  #         git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-  #     - name: Remove old pipeline file
-  #       run: |
-  #         OLD_PIPELINE=".github/workflows/e2e-enhanced-pipeline.yml"
-  #         if [ -f "$OLD_PIPELINE" ]; then
-  #           git rm "$OLD_PIPELINE"
-  #           git commit -m "ci: Remove redundant e2e-enhanced-pipeline.yml workflow"
-  #           git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for removing old pipeline file"
-  #           echo "Removed $OLD_PIPELINE."
-  #         else
-  #           echo "$OLD_PIPELINE not found, skipping removal."
-  #         fi
+  Optional: Job to delete the enhanced pipeline file if this one is stable
+  cleanup-old-pipeline:
+    needs: [publish] # Run after everything else successfully finishes
+    runs-on: ubuntu-latest
+    if: success() && (github.event_name == 'push' && github.ref == 'refs/heads/main') # Only on successful push to main
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Configure Git
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Remove old pipeline file
+        run: |
+          OLD_PIPELINE=".github/workflows/e2e-enhanced-pipeline.yml"
+          if [ -f "$OLD_PIPELINE" ]; then
+            git rm "$OLD_PIPELINE"
+            git commit -m "ci: Remove redundant e2e-enhanced-pipeline.yml workflow"
+            git push || (sleep 5 && git pull --rebase && git push) || echo "Push failed for removing old pipeline file"
+            echo "Removed $OLD_PIPELINE."
+          else
+            echo "$OLD_PIPELINE not found, skipping removal."
+          fi
 
-</rewritten_file>
