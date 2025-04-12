@@ -8,19 +8,14 @@ import tempfile
 import json
 import logging
 from typing import Dict, Any, Optional
+from qiskit import QuantumCircuit, transpile
+from qiskit.providers.jobstatus import JobStatus
 
 logger = logging.getLogger(__name__)
 
-class QuantumResult:
-    """Simple result class for quantum execution results."""
-    
-    def __init__(self, counts: Dict[str, int], metadata: Dict[str, Any]):
-        self.counts = counts
-        self.metadata = metadata
-
 def run_on_ibm_hardware(qasm_file: str, device_id: str = None, shots: int = 1024,
                       wait_for_results: bool = True, poll_timeout_seconds: int = 3600,
-                      optimization_level: int = 1, api_token: Optional[str] = None, **kwargs) -> QuantumResult:
+                      optimization_level: int = 1, api_token: Optional[str] = None, **kwargs) -> Dict[str, Any]:
     """
     Run a QASM file on IBM Quantum hardware.
     
@@ -35,19 +30,24 @@ def run_on_ibm_hardware(qasm_file: str, device_id: str = None, shots: int = 1024
         **kwargs: Additional arguments
         
     Returns:
-        QuantumResult: Result object with counts and metadata
+        Dict[str, Any]: Dictionary containing counts and metadata
     """
+    # Initialize counts and metadata early
+    counts = {"error": 1} # Default error counts
+    metadata = {
+        'platform': 'ibm',
+        'device_id': device_id or 'unknown',
+        'error': 'Initialization error' # Default error message
+    }
+    circuit: Optional[QuantumCircuit] = None
+    
     try:
-        # Try to import Qiskit - if not available, this will fail early
-        try:
-            from qiskit import QuantumCircuit
+        # Try to import Qiskit
+        try: from qiskit import QuantumCircuit
         except ImportError:
             logger.error("Qiskit not installed. Please install qiskit to use IBM hardware.")
-            return QuantumResult({"error": 1}, {
-                'platform': 'ibm',
-                'device_id': device_id,
-                'error': "Qiskit not installed. Please install qiskit to use IBM hardware."
-            })
+            metadata['error'] = "Qiskit not installed. Please install qiskit to use IBM hardware."
+            return {"counts": counts, "metadata": metadata} # Return dict
         
         # Get IBM credentials - either from config or from args
         ibm_api_token = None
@@ -80,11 +80,8 @@ def run_on_ibm_hardware(qasm_file: str, device_id: str = None, shots: int = 1024
         if not ibm_api_token:
             error_msg = "IBM Quantum API token not found. Please provide it using --api-token or set it as an environment variable (QISKIT_IBM_TOKEN, IBM_QUANTUM_TOKEN)."
             logger.error(error_msg)
-            return QuantumResult({"error": 1}, {
-                'platform': 'ibm',
-                'device_id': device_id,
-                'error': error_msg
-            })
+            metadata['error'] = error_msg
+            return {"counts": counts, "metadata": metadata} # Return dict
         
         # Read QASM file
         with open(qasm_file, 'r') as f:
@@ -96,12 +93,17 @@ def run_on_ibm_hardware(qasm_file: str, device_id: str = None, shots: int = 1024
             f.write(qasm_str)
         
         # Parse the circuit
-        circuit = QuantumCircuit.from_qasm_file(temp_file)
-        
         try:
-            os.remove(temp_file)
-        except:
-            pass
+            circuit = QuantumCircuit.from_qasm_file(temp_file)
+        finally:
+            try: os.remove(temp_file)
+            except: pass
+        
+        if circuit is None:
+            error_msg = "Failed to load circuit from QASM."
+            logger.error(error_msg)
+            metadata['error'] = error_msg
+            return {"counts": counts, "metadata": metadata} # Return dict
         
         # Initialize IBM Quantum services based on API version
         try:
@@ -141,7 +143,6 @@ def run_on_ibm_hardware(qasm_file: str, device_id: str = None, shots: int = 1024
                 logger.info(f"Device: {device.name}, Qubits: {device.num_qubits}")
                 
                 # Transpile circuit for the target device
-                from qiskit import transpile
                 transpiled = transpile(circuit, backend=device, optimization_level=optimization_level)
                 
                 # Submit the job using Runtime API
@@ -208,11 +209,9 @@ def run_on_ibm_hardware(qasm_file: str, device_id: str = None, shots: int = 1024
                 logger.info(f"Device: {device.name}, Qubits: {device.configuration().n_qubits}")
                 
                 # Transpile circuit for the target device
-                from qiskit import transpile
                 transpiled = transpile(circuit, backend=device, optimization_level=optimization_level)
                 
                 # Submit the job
-                from qiskit.providers.jobstatus import JobStatus
                 logger.info(f"Submitting job to {device.name}")
                 job = device.run(transpiled, shots=shots)
                 job_id = job.job_id()
@@ -223,9 +222,10 @@ def run_on_ibm_hardware(qasm_file: str, device_id: str = None, shots: int = 1024
                 'platform': 'ibm',
                 'provider': 'IBM',
                 'device': device.name if hasattr(device, 'name') else str(device),
-                'device_id': device_id,
+                'device_id': device_id if device_id else (device.name if hasattr(device, 'name') else str(device)),
                 'job_id': job_id,
-                'optimization_level': optimization_level
+                'optimization_level': optimization_level,
+                'error': None # Clear initial error
             }
             
             # Wait for results if requested
@@ -240,362 +240,146 @@ def run_on_ibm_hardware(qasm_file: str, device_id: str = None, shots: int = 1024
                     
                     # Check if job completed or failed
                     if isinstance(job_status, str):
-                        # For newer API, status is a string
-                        if job_status in ["DONE", "ERROR", "CANCELLED"]:
+                        if job_status.upper() in ["DONE", "ERROR", "CANCELLED"]:
                             break
-                    else:
-                        # For older API, status is an enum
-                        if job_status in [JobStatus.DONE, JobStatus.ERROR, JobStatus.CANCELLED]:
-                            break
+                    elif job_status in [JobStatus.DONE, JobStatus.ERROR, JobStatus.CANCELLED]:
+                        break
                     
                     time.sleep(30)  # Sleep for 30 seconds between polls
                 
-                # Check if job completed successfully
-                if job.status() == "DONE" or job.status() == JobStatus.DONE:
+                # --- Result Processing Block (Returns dict or raises error) --- 
+                job_final_status = job.status()
+                status_str = job_final_status.name if hasattr(job_final_status, 'name') else str(job_final_status)
+                logger.info(f"Final job status check. Value: {status_str}")
+                
+                if job and (job_final_status == JobStatus.DONE or status_str.upper() == "DONE"):
                     logger.info("Job completed successfully!")
+                    metadata['status'] = status_str
+                    metadata['execution_time'] = time.time() - start_time
                     
-                    # Retrieve results
-                    result = job.result()
-                    
-                    # Extract counts
                     try:
+                        result = job.result()
                         logger.info(f"Result object type: {type(result)}")
-                        logger.info(f"Result object attributes: {dir(result)}")
+                        logger.debug(f"Result object attributes: {dir(result)}")
                         
+                        result_counts = None # Initialize
+                        
+                        # Standard Qiskit result format
                         if hasattr(result, 'get_counts'):
-                            # Classic Qiskit IBMProvider result
-                            counts = result.get_counts()
-                            logger.info(f"Retrieved counts using get_counts(): {counts}")
-                        elif hasattr(result, 'quasi_dists'):
-                            # For Qiskit Runtime Sampler results
-                            logger.info("Processing result with quasi_dists")
-                            quasi_dist = result.quasi_dists[0]
-                            counts = {format(k, f'0{circuit.num_qubits}b'): int(v*shots) for k, v in quasi_dist.items()}
-                            logger.info(f"Retrieved counts from quasi_dists: {counts}")
-                        elif hasattr(result, 'data'):
-                            # SamplerV2 result format
-                            logger.info("Processing SamplerV2 result with data attribute")
-                            # Detailed debug info about the result object
-                            logger.debug(f"Result object attributes: {dir(result)}")
-                            logger.debug(f"Result object type: {type(result)}")
-                            
-                            # Extract data from SamplerV2 result format
-                            data = result.data
-                            logger.debug(f"Data object attributes: {dir(data)}")
-                            logger.debug(f"Data object type: {type(data)}")
-                            
-                            if hasattr(data, 'get_counts'):
-                                counts = data.get_counts()
-                                logger.info(f"Retrieved counts using data.get_counts(): {counts}")
-                            elif hasattr(data, 'meas_counts'):
-                                # Newer SamplerV2 format uses meas_counts
-                                counts = data.meas_counts[0]
-                                logger.info(f"Retrieved counts from meas_counts: {counts}")
-                            elif hasattr(data, 'counts'):
-                                # Try accessing counts directly
-                                counts = data.counts
-                                logger.info(f"Retrieved counts directly from data.counts: {counts}")
-                            elif hasattr(data, 'dist'):
-                                # Some versions use distribution
-                                dist = data.dist
-                                counts = {format(k, f'0{circuit.num_qubits}b'): int(v*shots) for k, v in dist.items()}
-                                logger.info(f"Retrieved counts from distribution: {counts}")
-                            else:
-                                # Last resort: try to extract from memory
-                                if hasattr(data, 'memory'):
-                                    memory = data.memory
-                                    # Count occurrences of each measurement outcome
-                                    counts = {}
-                                    for outcome in memory:
-                                        counts[outcome] = counts.get(outcome, 0) + 1
-                                    logger.info(f"Retrieved counts from memory: {counts}")
-                                else:
-                                    # Try generic dictionary access
-                                    try:
-                                        # Convert to dictionary for inspection
-                                        data_dict = data.to_dict() if hasattr(data, 'to_dict') else vars(data)
-                                        logger.debug(f"Data dictionary: {data_dict}")
-                                        
-                                        # Find any attribute that looks like counts
-                                        counts_candidates = [v for k, v in data_dict.items() 
-                                                           if isinstance(v, dict) and 
-                                                           all(isinstance(key, str) and isinstance(val, (int, float)) 
-                                                               for key, val in v.items())]
-                                        
-                                        if counts_candidates:
-                                            counts = counts_candidates[0]
-                                            logger.info(f"Found counts in data dictionary: {counts}")
-                                        else:
-                                            raise ValueError("No counts found in data attributes")
-                                    except Exception as inner_e:
-                                        logger.error(f"Failed to extract from data dictionary: {inner_e}")
-                                        raise ValueError(f"Cannot find counts in data: {inner_e}")
-                        elif hasattr(result, 'results') and result.results:
-                            # Try accessing the results array (older format)
-                            logger.info("Processing result with results array")
-                            logger.debug(f"Results array attributes: {dir(result.results[0])}")
-                            
-                            if hasattr(result.results[0], 'data'):
-                                logger.debug(f"Results[0].data attributes: {dir(result.results[0].data)}")
-                                if hasattr(result.results[0].data, 'counts'):
-                                    counts = result.results[0].data.counts
-                                    logger.info(f"Retrieved counts from results[0].data.counts: {counts}")
-                                else:
-                                    # Try to access as dictionary
-                                    data_dict = vars(result.results[0].data)
-                                    logger.debug(f"Results[0].data attributes: {data_dict}")
-                                    counts_candidates = [v for k, v in data_dict.items() 
-                                                      if isinstance(v, dict) and 
-                                                      all(isinstance(key, str) for key, val in v.items())]
-                                    if counts_candidates:
-                                        counts = counts_candidates[0]
-                                        logger.info(f"Found counts in results[0].data dictionary: {counts}")
-                                    else:
-                                        raise ValueError("No counts found in results[0].data")
-                            else:
-                                # Last resort: try direct dictionary access to result
-                                result_dict = vars(result)
-                                logger.debug(f"Result attributes: {result_dict}")
-                                raise ValueError("results[0] has no data attribute")
-                        # Handle PrimitiveResult object (newest IBM API)
-                        elif hasattr(result, '_pubsub_data'):
-                            logger.info("Processing PrimitiveResult object")
-                            
-                            # Debug the structure of PrimitiveResult
-                            pubsub_data = getattr(result, '_pubsub_data', {})
-                            logger.debug(f"_pubsub_data keys: {list(pubsub_data.keys()) if isinstance(pubsub_data, dict) else 'Not a dict'}")
-                            
-                            # Initialize counts to avoid reference before assignment
-                            counts = {}
-                            
-                            # Try to access measurement data
-                            if isinstance(pubsub_data, dict) and 'measurements' in pubsub_data:
-                                measurements = pubsub_data['measurements']
-                                logger.info(f"Found measurements in _pubsub_data: {type(measurements)}")
-                                logger.debug(f"Sample measurements: {str(measurements)[:100] if measurements else 'None'}")
-                                
-                                # Check if it's a dictionary with bitstring keys
-                                if isinstance(measurements, dict) and all(isinstance(k, str) for k in measurements.keys()):
-                                    counts = measurements
-                                    logger.info(f"Retrieved counts from _pubsub_data['measurements']: {counts}")
-                                else:
-                                    # Try to parse measurements data
-                                    logger.debug(f"Measurements type: {type(measurements)}")
-                                    if isinstance(measurements, list) and len(measurements) > 0:
-                                        # Count occurrences of each measurement outcome
-                                        counts = {}
-                                        for outcome in measurements:
-                                            outcome_str = outcome if isinstance(outcome, str) else format(int(outcome) if isinstance(outcome, (int, float)) else int(str(outcome), 2), f'0{circuit.num_qubits}b')
-                                            counts[outcome_str] = counts.get(outcome_str, 0) + 1
-                                        logger.info(f"Built counts from measurements list: {counts}")
-                                    else:
-                                        logger.warning("Couldn't parse measurements data, will try other methods")
-                            # Check for bitstrings data format (another PrimitiveResult format)
-                            elif isinstance(pubsub_data, dict) and 'bitstrings' in pubsub_data:
-                                bitstrings = pubsub_data['bitstrings']
-                                logger.info(f"Found bitstrings in _pubsub_data: {type(bitstrings)}")
-                                logger.debug(f"Sample bitstrings: {str(bitstrings)[:100] if bitstrings else 'None'}")
-                                
-                                if isinstance(bitstrings, list):
-                                    # Count occurrences of each bitstring
-                                    counts = {}
-                                    for outcome in bitstrings:
-                                        outcome_str = outcome if isinstance(outcome, str) else format(int(outcome) if isinstance(outcome, (int, float)) else int(str(outcome), 2), f'0{circuit.num_qubits}b')
-                                        counts[outcome_str] = counts.get(outcome_str, 0) + 1
-                                    logger.info(f"Built counts from bitstrings list: {counts}")
-                                else:
-                                    logger.warning("Couldn't parse bitstrings data, will try other methods")
-                            
-                            # Try to examine entire pubsub_data for nested measurement data
-                            if not counts and isinstance(pubsub_data, dict):
-                                logger.info("Searching for nested measurement data in pubsub_data")
-                                # Recursively search for any list or dictionary that could be measurement data
-                                def find_measurement_data(data, path=""):
-                                    if isinstance(data, dict):
-                                        # Check if this could be a counts dictionary
-                                        if all(isinstance(k, str) and isinstance(v, (int, float)) for k, v in data.items()) and data:
-                                            logger.info(f"Found potential counts at {path}: {data}")
-                                            return data
-                                        # Recursively search nested dictionaries
-                                        for k, v in data.items():
-                                            result = find_measurement_data(v, f"{path}.{k}" if path else k)
-                                            if result:
-                                                return result
-                                    elif isinstance(data, list) and data and all(isinstance(x, (str, int)) for x in data):
-                                        # This could be measurement data
-                                        logger.info(f"Found potential measurement list at {path}: {data[:5]}...")
-                                        counts_dict = {}
-                                        for outcome in data:
-                                            outcome_str = outcome if isinstance(outcome, str) else format(int(outcome) if isinstance(outcome, (int, float)) else int(str(outcome), 2), f'0{circuit.num_qubits}b')
-                                            counts_dict[outcome_str] = counts_dict.get(outcome_str, 0) + 1
-                                        return counts_dict
-                                    return None
-                                
-                                nested_counts = find_measurement_data(pubsub_data)
-                                if nested_counts:
-                                    counts = nested_counts
-                                    logger.info(f"Retrieved counts from nested pubsub_data: {counts}")
-                            
-                            # Check if we have _pub_results which is another place where data might be stored
-                            if (not counts or len(counts) == 0) and hasattr(result, '_pub_results'):
-                                logger.info("Checking _pub_results for measurement data")
-                                pub_results = getattr(result, '_pub_results', [])
-                                
-                                if pub_results and isinstance(pub_results, list):
-                                    logger.debug(f"_pub_results length: {len(pub_results)}")
-                                    
-                                    # Try to extract data from the first result
-                                    if len(pub_results) > 0:
-                                        first_result = pub_results[0]
-                                        logger.debug(f"First pub_result type: {type(first_result)}")
-                                        
-                                        # Try to access data dictionary
-                                        if hasattr(first_result, 'data'):
-                                            data = first_result.data
-                                            logger.debug(f"Data attributes: {dir(data) if hasattr(data, '__dict__') else 'Not inspectable'}")
-                                            
-                                            # Look for counts
-                                            if hasattr(data, 'counts'):
-                                                counts = data.counts
-                                                logger.info(f"Found counts in _pub_results[0].data.counts: {counts}")
-                                            # Try to access memory (raw measurement results)
-                                            elif hasattr(data, 'memory'):
-                                                memory = data.memory
-                                                logger.debug(f"Found memory in _pub_results[0].data.memory: {type(memory)}")
-                                                
-                                                if isinstance(memory, list) and memory:
-                                                    # Count occurrences of each measurement
-                                                    counts = {}
-                                                    for outcome in memory:
-                                                        outcome_str = outcome if isinstance(outcome, str) else format(int(outcome) if isinstance(outcome, (int, float)) else int(str(outcome), 2), f'0{circuit.num_qubits}b')
-                                                        counts[outcome_str] = counts.get(outcome_str, 0) + 1
-                                                    logger.info(f"Built counts from _pub_results[0].data.memory: {counts}")
-                                        # Try dictionary conversion if data is not directly accessible
-                                        elif isinstance(first_result, dict):
-                                            logger.debug(f"First pub_result keys: {list(first_result.keys())}")
-                                            
-                                            # Check if it has counts directly
-                                            if 'counts' in first_result:
-                                                counts = first_result['counts']
-                                                logger.info(f"Found counts in _pub_results[0]['counts']: {counts}")
-                                            # Check if it has data with counts
-                                            elif 'data' in first_result and isinstance(first_result['data'], dict):
-                                                data_dict = first_result['data']
-                                                if 'counts' in data_dict:
-                                                    counts = data_dict['counts']
-                                                    logger.info(f"Found counts in _pub_results[0]['data']['counts']: {counts}")
-                                                # Check for memory
-                                                elif 'memory' in data_dict and isinstance(data_dict['memory'], list):
-                                                    memory = data_dict['memory']
-                                                    counts = {}
-                                                    for outcome in memory:
-                                                        outcome_str = outcome if isinstance(outcome, str) else format(int(outcome) if isinstance(outcome, (int, float)) else int(str(outcome), 2), f'0{circuit.num_qubits}b')
-                                                        counts[outcome_str] = counts.get(outcome_str, 0) + 1
-                                                    logger.info(f"Built counts from _pub_results[0]['data']['memory']: {counts}")
-                            
-                            # If we have metadata - try extracting from there (if counts still empty)
-                            if not counts or len(counts) == 0:
-                                logger.warning("No direct measurements found in PrimitiveResult, trying all attributes")
-                                
-                                # Attempt to find measurement data in any attribute
-                                found_measurements = False
-                                for attr_name in dir(result):
-                                    if attr_name.startswith('_') or callable(getattr(result, attr_name)):
-                                        continue
-                                        
-                                    try:
-                                        attr_value = getattr(result, attr_name)
-                                        logger.debug(f"Checking attribute: {attr_name}, type: {type(attr_value)}")
-                                        
-                                        if isinstance(attr_value, dict):
-                                            # Look for measurements key
-                                            if 'measurements' in attr_value:
-                                                measurements = attr_value['measurements']
-                                                if isinstance(measurements, dict):
-                                                    counts = measurements
-                                                    logger.info(f"Found counts in {attr_name}.measurements: {counts}")
-                                                    found_measurements = True
-                                                    break
-                                                elif isinstance(measurements, list) and measurements:
-                                                    # Count occurrences of each measurement outcome
-                                                    counts = {}
-                                                    for outcome in measurements:
-                                                        outcome_str = outcome if isinstance(outcome, str) else format(int(outcome) if isinstance(outcome, (int, float)) else int(str(outcome), 2), f'0{circuit.num_qubits}b')
-                                                        counts[outcome_str] = counts.get(outcome_str, 0) + 1
-                                                    logger.info(f"Built counts from {attr_name}.measurements list: {counts}")
-                                                    found_measurements = True
-                                                    break
-                                            # Look for a dictionary that could be counts
-                                            elif all(isinstance(k, str) and isinstance(v, (int, float)) for k, v in attr_value.items()):
-                                                counts = attr_value
-                                                logger.info(f"Found potential counts in {attr_name}: {counts}")
-                                                found_measurements = True
-                                                break
-                                        
-                                        # Check if this attribute has _pubsub_data
-                                        if hasattr(attr_value, '_pubsub_data'):
-                                            nested_pubsub = getattr(attr_value, '_pubsub_data', {})
-                                            logger.info(f"Found nested _pubsub_data in {attr_name}")
-                                            
-                                            if isinstance(nested_pubsub, dict) and ('measurements' in nested_pubsub or 'bitstrings' in nested_pubsub):
-                                                measurement_key = 'measurements' if 'measurements' in nested_pubsub else 'bitstrings'
-                                                measurement_data = nested_pubsub[measurement_key]
-                                                
-                                                if isinstance(measurement_data, list):
-                                                    counts = {}
-                                                    for outcome in measurement_data:
-                                                        outcome_str = outcome if isinstance(outcome, str) else format(int(outcome) if isinstance(outcome, (int, float)) else int(str(outcome), 2), f'0{circuit.num_qubits}b')
-                                                        counts[outcome_str] = counts.get(outcome_str, 0) + 1
-                                                    logger.info(f"Built counts from nested {attr_name}._pubsub_data.{measurement_key}: {counts}")
-                                                    found_measurements = True
-                                                    break
-                                    except Exception as attr_err:
-                                        logger.debug(f"Error processing attribute {attr_name}: {attr_err}")
-                                        continue
-                                
-                                if not found_measurements:
-                                    # Create a default result when all else fails
-                                    logger.error("Could not find any measurement data in PrimitiveResult")
-                                    counts = {"0" * circuit.num_qubits: shots // 2, "1" * circuit.num_qubits: shots // 2}
-                    except Exception as e:
-                        logger.error(f"Failed to extract counts: {str(e)}")
-                        logger.error(f"Result object type: {type(result)}")
-                        logger.error(f"Result object attributes: {dir(result)}")
+                            try:
+                                result_counts = result.get_counts(0) # Try index 0 first
+                                logger.info(f"Successfully extracted counts from result.get_counts(0)")
+                            except Exception as e:
+                                logger.warning(f"Failed to extract counts using result.get_counts(): {str(e)}")
                         
-                        # Create a default error result but continue
-                        counts = {"error_extracting_counts": 1}
-                        metadata['error'] = f"Failed to extract counts: {str(e)}"
-                    
-                    # Create result object
-                    return QuantumResult(counts, metadata)
+                        # PrimitiveResult format (IBM Qiskit Runtime SamplerV2)
+                        elif hasattr(result, '_pub_results') and result._pub_results:
+                            logger.info("Processing PrimitiveResult format (SamplerV2)")
+                            if len(result._pub_results) > 0:
+                                pub_result = result._pub_results[0]
+                                logger.info(f"pub_result type: {type(pub_result)}")
+                                logger.debug(f"pub_result attributes: {dir(pub_result)}")
+
+                                if hasattr(pub_result, 'data'):
+                                    logger.debug(f"pub_result.data type: {type(pub_result.data)}")
+                                    logger.debug(f"pub_result.data attributes: {dir(pub_result.data)}")
+
+                                    # Function to attempt extraction (as provided by user)
+                                    def attempt_extraction(reg_name):
+                                        if reg_name and hasattr(pub_result.data, reg_name):
+                                            creg_data = getattr(pub_result.data, reg_name)
+                                            logger.info(f"Attempting extraction with register name: {reg_name}")
+                                            if hasattr(creg_data, 'get_counts'):
+                                                try:
+                                                    counts = creg_data.get_counts()
+                                                    logger.info(f"Counts extracted successfully using register '{reg_name}': {counts}")
+                                                    return counts
+                                                except Exception as e:
+                                                    logger.warning(f"Error calling get_counts on register '{reg_name}': {e}")
+                                            else: logger.warning(f"Register data for '{reg_name}' has no get_counts method.")
+                                        else: logger.debug(f"pub_result.data has no attribute named '{reg_name}'")
+                                        return None
+
+                                    # Determine classical register name (best effort)
+                                    creg_name = None
+                                    if circuit and hasattr(circuit, 'cregs') and circuit.cregs: # Added check for circuit existence
+                                        creg_name = circuit.cregs[0].name
+                                        logger.info(f"Found classical register name from circuit: {creg_name}")
+                                    else: 
+                                        logger.warning("Could not find classical register name in circuit object. Will try common names.")
+                                        creg_name = "c" # Default
+                                    logger.info(f"Attempting counts extraction with register: {creg_name}")
+
+                                    extracted_counts = attempt_extraction(creg_name)
+                                    if extracted_counts is None: # Fallback attempts
+                                        logger.info("Primary extraction failed. Trying common register names.")
+                                        common_names = ['c', 'meas', 'measurement', 'creg']
+                                        if creg_name in common_names: common_names.remove(creg_name)
+                                        for name in common_names:
+                                            extracted_counts = attempt_extraction(name)
+                                            if extracted_counts is not None: break
+                                    
+                                    if extracted_counts is None: # Final fallback: inspect all data attributes
+                                        logger.warning("Could not extract counts using common names. Inspecting all data attributes.")
+                                        for attr in dir(pub_result.data):
+                                            if not attr.startswith('_'):
+                                                logger.debug(f"Inspecting attribute: {attr}")
+                                                extracted_counts = attempt_extraction(attr)
+                                                if extracted_counts is not None: break
+                                            
+                                    if extracted_counts is not None:
+                                        result_counts = extracted_counts
+                                    else: logger.error("Failed to extract counts from pub_result.data using all methods.")
+                                else: logger.error("pub_result has no data attribute")
+                            else: logger.error("result has no _pub_results or it's empty")
+                        
+                        # Try simple data.counts attribute
+                        elif hasattr(result, 'data') and hasattr(result.data, 'counts'):
+                             try: 
+                                 result_counts = result.data.counts
+                                 logger.info("Successfully extracted counts from result.data.counts")
+                             except Exception as e: logger.warning(f"Failed to extract from result.data.counts: {str(e)}")
+
+                        # Check if counts were found
+                        if result_counts is not None:
+                            counts = result_counts
+                            logger.info(f"Using extracted counts: {counts}")
+                        else:
+                            logger.warning("No counts could be extracted, returning default error counts.")
+                            counts = {"error_extracting_counts": 1}
+                            metadata['error'] = "Failed to extract counts from result object."
+                            
+                        return {"counts": counts, "metadata": metadata} # Return dict
+                        
+                    except Exception as e:
+                        error_msg = f"Failed to process result object: {str(e)}"
+                        logger.error(error_msg, exc_info=True)
+                        metadata['error'] = error_msg
+                        counts = {"error_processing_result": 1}
+                        return {"counts": counts, "metadata": metadata} # Return dict
                 else:
-                    error_msg = f"Job failed or timed out. Final status: {job.status()}"
+                    error_msg = f"Job failed or timed out. Final status: {status_str}"
                     logger.error(error_msg)
-                    return QuantumResult({"error": 1}, {
-                        **metadata,
-                        'error': error_msg
-                    })
+                    metadata['error'] = error_msg
+                    counts = {"error_job_failed_or_timed_out": 1}
+                    return {"counts": counts, "metadata": metadata} # Return dict
             else:
                 # Return a placeholder result with job information
-                return QuantumResult({"pending": shots}, {
-                    **metadata,
-                    'status': 'QUEUED',
-                    'message': 'Job submitted but not waiting for results'
-                })
+                logger.info("Job submitted, not waiting for results.")
+                metadata['status'] = 'SUBMITTED'
+                counts = {} # No counts available yet
+                return {"counts": counts, "metadata": metadata} # Return dict
                 
         except Exception as e:
             error_msg = f"Failed to submit circuit to IBM Quantum: {str(e)}"
-            logger.error(error_msg)
-            return QuantumResult({"error": 1}, {
-                'platform': 'ibm',
-                'device_id': device_id,
-                'error': error_msg
-            })
+            logger.error(error_msg, exc_info=True)
+            metadata['error'] = error_msg
+            counts = {"error_submitting_job": 1}
+            return {"counts": counts, "metadata": metadata} # Return dict
             
     except Exception as e:
         error_msg = f"Error in run_on_ibm_hardware: {str(e)}"
-        logger.error(error_msg)
-        return QuantumResult({"error": 1}, {
-            'platform': 'ibm',
-            'error': error_msg
-        }) 
+        logger.error(error_msg, exc_info=True)
+        metadata['error'] = error_msg # Update metadata
+        counts = {"error_outer_exception": 1} # Update counts
+        return {"counts": counts, "metadata": metadata} # Return dict 
