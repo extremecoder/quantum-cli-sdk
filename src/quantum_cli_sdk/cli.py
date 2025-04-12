@@ -183,10 +183,10 @@ def setup_ir_commands(subparsers):
     mitigate_parser.add_argument("--params", '-p', default=None, help="JSON string containing technique-specific parameters (e.g., '{\"scale_factors\": [1, 2, 3]}')")
     mitigate_parser.add_argument("--report", action='store_true', help="Generate a JSON report about the mitigation process.")
 
-    # ir finetune (placeholder)
+    # ir finetune
     finetune_parser = ir_subparsers.add_parser("finetune", help="Fine-tune circuit based on analysis results and hardware constraints")
-    finetune_parser.add_argument("--input-file", '-i', required=False, help="Path to the input IR file (usually mitigated)")
-    finetune_parser.add_argument("--output-file", '-o', required=False, help="Path to save fine-tuning results (JSON)")
+    finetune_parser.add_argument("--input-file", '-i', nargs='?', default=None, help="Path to the input IR file (usually mitigated). If omitted, searches in ir/openqasm/mitigated/ and uses the first .qasm file found.")
+    finetune_parser.add_argument("--output-file", '-o', default=None, help="Path to save fine-tuning results (JSON). If omitted, defaults to results/finetune/<input_stem>_finetune_results.json")
     finetune_parser.add_argument("--hardware", choices=["ibm", "aws", "google"], default="ibm", help="Target hardware platform for fine-tuning")
     finetune_parser.add_argument("--search", choices=["grid", "random"], default="random", help="Search method for hyperparameter optimization")
     finetune_parser.add_argument("--shots", type=int, default=1000, help="Number of shots for simulation during fine-tuning")
@@ -814,23 +814,61 @@ def handle_ir_commands(args):
             print("Error: Command implementation missing.", file=sys.stderr)
             sys.exit(1)
     elif args.ir_cmd == "finetune":
-        # Call the finetune command function
         if hasattr(ir_finetune_mod, 'finetune_circuit'):
-            success = ir_finetune_mod.finetune_circuit(
-                input_file=args.input_file,
-                output_file=args.output_file,
-                hardware=args.hardware,
-                search_method=args.search,
-                shots=args.shots,
-                use_hardware=args.use_hardware,
-                device_id=args.device_id,
-                api_token=args.api_token,
-                max_circuits=args.max_circuits,
-                poll_timeout=args.poll_timeout
-            )
-            sys.exit(0 if success else 1)
+            
+            # Determine input file path
+            input_file_path: Path | None = None
+            if args.input_file is None:
+                default_ir_dir = Path("ir/openqasm/mitigated") # Assuming mitigated is the right default for finetune
+                logger.info(f"No input file specified for finetune. Searching in {default_ir_dir}...")
+                input_file_path = find_first_file(default_ir_dir, "*.qasm")
+                if not input_file_path:
+                    logger.error(f"No .qasm file found in {default_ir_dir}. Please specify an input file.")
+                    print(f"Error: No input file specified and no default found in {default_ir_dir}.", file=sys.stderr)
+                    sys.exit(1)
+                logger.info(f"Using default input file for finetune: {input_file_path}")
+            else:
+                input_file_path = Path(args.input_file)
+                if not input_file_path.is_file():
+                     logger.error(f"Specified input file not found: {input_file_path}")
+                     print(f"Error: Input file not found: {input_file_path}", file=sys.stderr)
+                     sys.exit(1)
+
+            # Determine output file path
+            output_file_path: Path | None = None
+            if args.output_file is None:
+                default_output_dir = Path("results/finetune")
+                default_output_dir.mkdir(parents=True, exist_ok=True)
+                output_filename = f"{input_file_path.stem}_finetune_results.json"
+                output_file_path = default_output_dir / output_filename
+                logger.info(f"No output file specified for finetune. Defaulting to: {output_file_path}")
+            else:
+                output_file_path = Path(args.output_file)
+                output_file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            try:
+                # Call the finetune function - adjust args based on actual function signature
+                success = ir_finetune_mod.finetune_circuit(
+                    input_file=str(input_file_path), 
+                    output_file=str(output_file_path),
+                    hardware=args.hardware,
+                    search_method=args.search,
+                    shots=args.shots,
+                    use_hardware=args.use_hardware,
+                    device_id=args.device_id,
+                    api_token=args.api_token,
+                    max_circuits=args.max_circuits,
+                    poll_timeout=args.poll_timeout
+                    # Add/remove/rename args as needed based on finetune_circuit definition
+                )
+                # Assuming finetune_circuit returns True/False or raises exception
+                sys.exit(0 if success else 1)
+            except Exception as e:
+                 logger.error(f"Finetuning failed for {input_file_path}: {e}", exc_info=True)
+                 print(f"Error during finetuning: {e}", file=sys.stderr)
+                 sys.exit(1)
         else:
-            logger.error("finetune_circuit function not found in ir_finetune_mod. Cannot execute command.")
+            logger.error("finetune_circuit function not found. Cannot execute command.")
             print("Error: Command implementation missing.", file=sys.stderr)
             sys.exit(1)
     else:

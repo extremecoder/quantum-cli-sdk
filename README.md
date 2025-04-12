@@ -501,7 +501,7 @@ This structure is designed to work seamlessly with the Quantum CLI SDK commands 
 
 15. **Benchmark quantum circuit performance (using mitigated circuit):**
     ```bash
-    quantum-cli analyze benchmark ir/openqasm/mitigated/my_circuit.qasm --shots 1000 --output results/analysis/benchmark/my_circuit_benchmark.json
+    quantum-cli analyze benchmark ir/openqasm/mitigated/my_circuit.qasm --output results/analysis/benchmark/my_circuit_benchmark.json
     ```
     This command benchmarks the circuit's performance, providing metrics on execution time, transpilation quality, and resource efficiency across different quantum platforms.
 
@@ -510,7 +510,7 @@ This structure is designed to work seamlessly with the Quantum CLI SDK commands 
     
     Running on simulator
     ```bash
-    quantum-cli ir finetune --input-file ir/openqasm/mitigated/my_circuit.qasm --output-file results/analysis/finetuning/my_circuit_finetuned.json --hardware ibm --search random --shots 1024
+    quantum-cli ir finetune --input-file ir/openqasm/mitigated/my_circuit.qasm --output-file results/analysis/finetune/my_circuit_finetune_results.json --hardware ibm --search random --shots 1024
     ```
 
     Running on hardware
