@@ -91,7 +91,7 @@ def extract_metrics(results):
     Extract key metrics from results.
     
     Args:
-        results (list): List of result objects
+        results (list): List of result objects (can be from loaded files or run_benchmark)
         
     Returns:
         dict: Dictionary of extracted metrics
@@ -105,7 +105,7 @@ def extract_metrics(results):
         "error_rate": 0,
         "execution_times": [],
         "circuit_depths": [],
-        "circuit_widths": [],
+        "circuit_widths": [], # Keep width if needed, though run_benchmark doesn't provide it
         "gate_counts": {},
         "distribution_fidelities": [],
         "detailed_metrics": []
@@ -114,51 +114,84 @@ def extract_metrics(results):
     num_successful = 0
     
     for result in results:
+        is_run_benchmark_format = "circuit" in result and "execution" in result and "metrics" in result
+
         # Track simulator or platform
-        if "simulator" in result:
-            metrics["simulators"].add(result["simulator"])
-        if "platform" in result:
-            metrics["platforms"].add(result["platform"])
+        simulator = "unknown"
+        if is_run_benchmark_format:
+            simulator = result["execution"].get("backend", "qiskit_aer") # Default if run_benchmark was used
+            metrics["simulators"].add(simulator)
+        elif "simulator" in result:
+            simulator = result["simulator"]
+            metrics["simulators"].add(simulator)
+        elif "platform" in result:
+            simulator = result["platform"] # Use platform if simulator missing
+            metrics["platforms"].add(simulator)
             
         # Track shots
-        if "shots" in result:
-            metrics["total_shots"] += result["shots"]
+        shots = 0
+        if is_run_benchmark_format:
+            shots = result["execution"].get("shots", 0)
+        elif "shots" in result:
+            shots = result["shots"]
+        metrics["total_shots"] += shots
             
         # Track success
-        if result.get("success", False):
+        success = False
+        if is_run_benchmark_format:
+            success = result["metrics"].get("success", False)
+        elif "success" in result:
+             success = result.get("success", False)
+        if success:    
             num_successful += 1
             
         # Track execution time
-        if "execution_time" in result:
-            metrics["execution_times"].append(result["execution_time"])
+        execution_time = 0
+        if is_run_benchmark_format:
+            execution_time = result["execution"].get("time_seconds", 0)
+        elif "execution_time" in result:
+             execution_time = result["execution_time"]
+        metrics["execution_times"].append(execution_time)
             
         # Track circuit metrics
-        if "circuit_metrics" in result:
+        circuit_depth = 0
+        circuit_width = 0 # run_benchmark doesn't provide width currently
+        gate_counts = {}
+        if is_run_benchmark_format:
+            cm = result["circuit"]
+            circuit_depth = cm.get("depth", 0)
+            circuit_width = cm.get("qubits", 0) # Use qubit count as width proxy
+            gate_counts = cm.get("gates", {}).get("by_type", {}) # Get detailed counts
+            # Add total if available
+            if "total" in cm.get("gates", {}):
+                 gate_counts['total'] = cm["gates"]["total"]
+        elif "circuit_metrics" in result:
             cm = result["circuit_metrics"]
-            if "depth" in cm:
-                metrics["circuit_depths"].append(cm["depth"])
-            if "width" in cm:
-                metrics["circuit_widths"].append(cm["width"])
-            if "gate_counts" in cm:
-                for gate, count in cm["gate_counts"].items():
-                    if gate not in metrics["gate_counts"]:
-                        metrics["gate_counts"][gate] = 0
-                    metrics["gate_counts"][gate] += count
+            circuit_depth = cm.get("depth", 0)
+            circuit_width = cm.get("width", 0)
+            gate_counts = cm.get("gate_counts", {})
+        
+        metrics["circuit_depths"].append(circuit_depth)
+        metrics["circuit_widths"].append(circuit_width)
+        for gate, count in gate_counts.items():
+            metrics["gate_counts"][gate] = metrics["gate_counts"].get(gate, 0) + count
                     
-        # Track fidelity if available
-        if "fidelity" in result:
-            metrics["distribution_fidelities"].append(result["fidelity"])
+        # Track fidelity if available (run_benchmark doesn't provide distribution fidelity)
+        fidelity = 0
+        if "fidelity" in result: # Check top level for loaded results
+            fidelity = result["fidelity"]
+            metrics["distribution_fidelities"].append(fidelity)
             
         # Add to detailed metrics
         detailed = {
-            "source": result.get("_file_path", "unknown"),
-            "simulator": result.get("simulator", result.get("platform", "unknown")),
-            "shots": result.get("shots", 0),
-            "success": result.get("success", False),
-            "execution_time": result.get("execution_time", 0),
-            "circuit_depth": result.get("circuit_metrics", {}).get("depth", 0),
-            "circuit_width": result.get("circuit_metrics", {}).get("width", 0),
-            "fidelity": result.get("fidelity", 0)
+            "source": result.get("_file_path", "direct_run"), # Indicate if it was run directly
+            "simulator": simulator,
+            "shots": shots,
+            "success": success,
+            "execution_time": execution_time,
+            "circuit_depth": circuit_depth,
+            "circuit_width": circuit_width,
+            "fidelity": fidelity
         }
         metrics["detailed_metrics"].append(detailed)
     
@@ -173,17 +206,16 @@ def extract_metrics(results):
     
     return metrics
 
-def run_benchmark(source_path, shots=1000, circuit_file=None):
+def run_benchmark(source_path, shots=1000):
     """
     Run a benchmark directly on a circuit file.
     
     Args:
-        source_path (str): Path to circuit file
+        source_path (str): Path to circuit file to benchmark
         shots (int): Number of shots
-        circuit_file (str): Path to circuit file to benchmark
         
     Returns:
-        dict: Benchmark results
+        dict: Benchmark results or None on error
     """
     try:
         # Import required modules
@@ -198,15 +230,20 @@ def run_benchmark(source_path, shots=1000, circuit_file=None):
             logger.error(f"Qiskit import error: {e}")
             return None
         
-        # Load circuit from file
-        with open(circuit_file, 'r') as f:
+        circuit_file_path = Path(source_path) # Use Path object
+        if not circuit_file_path.is_file():
+             logger.error(f"Circuit file not found: {source_path}")
+             return None
+
+        # Load circuit from file using source_path
+        with open(circuit_file_path, 'r') as f:
             qasm = f.read()
         
         # Create circuit from QASM
         try:
             circuit = QuantumCircuit.from_qasm_str(qasm)
         except Exception as e:
-            logger.error(f"Error loading QASM circuit: {e}")
+            logger.error(f"Error loading QASM circuit from {source_path}: {e}")
             return None
             
         # Get circuit metrics
@@ -239,10 +276,10 @@ def run_benchmark(source_path, shots=1000, circuit_file=None):
             counts = result.get_counts()
             execution_time = time.time() - start_time
             
-            # Prepare benchmark results
+            # Prepare benchmark results using source_path for name
             benchmark_result = {
                 "circuit": {
-                    "name": os.path.basename(circuit_file).replace(".qasm", ""),
+                    "name": circuit_file_path.stem, # Use stem from Path object
                     "qubits": num_qubits,
                     "depth": depth,
                     "gates": {
@@ -267,11 +304,11 @@ def run_benchmark(source_path, shots=1000, circuit_file=None):
             return benchmark_result
             
         except Exception as e:
-            logger.error(f"Error during simulation: {e}")
+            logger.error(f"Error during simulation for {source_path}: {e}")
             return None
             
     except Exception as e:
-        logger.error(f"Error in benchmark: {e}")
+        logger.error(f"Error in run_benchmark for {source_path}: {e}")
         return None
 
 def create_visualizations(metrics, dest_dir):
@@ -502,9 +539,8 @@ def benchmark(source_file, dest_file=None):
     # Run benchmark or load results
     results = []
     if is_circuit:
-        # Run benchmark directly on the circuit
         logger.info(f"Running benchmark on circuit file: {source_file}")
-        benchmark_result = run_benchmark(None, 1000, source_file)
+        benchmark_result = run_benchmark(source_path=source_file, shots=1000)
         
         if benchmark_result:
             results.append(benchmark_result)

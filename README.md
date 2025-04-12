@@ -495,7 +495,7 @@ This structure is designed to work seamlessly with the Quantum CLI SDK commands 
 
 14. **Estimate quantum circuit execution costs (using mitigated circuit):**
     ```bash
-    quantum-cli analyze cost ir/openqasm/mitigated/my_circuit.qasm --platform all --shots 1000 --output results/analysis/cost/my_circuit_cost.json
+    quantum-cli analyze cost ir/openqasm/mitigated/my_circuit.qasm --resource-file results/analysis/resources/my_circuit_resources.json --platform all --shots 1000 --output results/analysis/cost/my_circuit_cost.json
     ```
     This command estimates the execution costs across various quantum hardware platforms (IBM, AWS, Google, IONQ, Rigetti) based on the circuit's structure and required shots.
 
