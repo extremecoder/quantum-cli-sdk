@@ -60,6 +60,7 @@ from . import dependency_analyzer
 from . import progress
 from . import output_formatter
 from . import logging_config
+from .utils import find_first_file
 
 # Set up logging
 logging.basicConfig(
@@ -246,8 +247,8 @@ def setup_analyze_commands(subparsers):
 
     # analyze resources
     resources_parser = analyze_subparsers.add_parser("resources", help="Estimate resource requirements (qubits, gates)")
-    resources_parser.add_argument("ir_file", help="Path to the input IR file (OpenQASM)")
-    resources_parser.add_argument("--output", help="Path to save resource estimation results (JSON)")
+    resources_parser.add_argument("ir_file", nargs='?', default=None, help="Path to the input IR file (OpenQASM). If omitted, searches in ir/openqasm/mitigated/ and uses the first .qasm file found.")
+    resources_parser.add_argument("--output", default=None, help="Path to save resource estimation results (JSON). If omitted, defaults to results/analysis/resources/<ir_stem>_resources.json")
     resources_parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
 
     # analyze cost 
@@ -890,32 +891,68 @@ def handle_test_commands(args):
 
 
 def handle_analyze_commands(args):
-    """Handle circuit analysis commands."""
+    """Handle analyze subcommands."""
     if args.analyze_cmd == "resources":
-        if not args.output:
-            # Default output path if not specified
-            args.output = f"results/resource_estimation/{Path(args.ir_file).stem}_resources.json"
-        
-        results = analyze_resources_mod.estimate_resources(args.ir_file, args.output)
-        
-        if results and args.format == "text":
-            # Display a text summary of the results
-            print("\nResource Estimation Summary:")
-            print("=" * 50)
-            print(f"Circuit: {results['circuit_name']}")
-            print(f"Qubits: {results['qubit_count']}")
-            print(f"Total gates: {results['gate_counts']['total']}")
-            print(f"Circuit depth: {results['circuit_depth']}")
-            print(f"T-depth: {results['t_depth']}")
-            print("\nGate breakdown:")
-            for gate, count in results['gate_counts'].items():
-                if gate != "total":
-                    print(f"  {gate}: {count}")
-            print("\nEstimated runtime:")
-            for platform, time in results['estimated_runtime'].items():
-                print(f"  {platform}: {time}")
-            print(f"Estimated error probability: {results['error_probability_estimate']}")
-            print("=" * 50)
+        if hasattr(analyze_resources_mod, 'estimate_resources'):
+            
+            # Determine input file path
+            input_file_path: Path | None = None
+            if args.ir_file is None:
+                default_ir_dir = Path("ir/openqasm/mitigated")
+                logger.info(f"No IR file specified. Searching in {default_ir_dir}...")
+                input_file_path = find_first_file(default_ir_dir, "*.qasm")
+                if not input_file_path:
+                    logger.error(f"No .qasm file found in {default_ir_dir}. Please specify an input file.")
+                    print(f"Error: No input file specified and no default found in {default_ir_dir}.", file=sys.stderr)
+                    sys.exit(1)
+                logger.info(f"Using default input file: {input_file_path}")
+            else:
+                input_file_path = Path(args.ir_file)
+                if not input_file_path.is_file():
+                     logger.error(f"Specified input file not found: {input_file_path}")
+                     print(f"Error: Input file not found: {input_file_path}", file=sys.stderr)
+                     sys.exit(1)
+            
+            # Determine output file path
+            output_file_path: Path | None = None
+            if args.output is None:
+                default_output_dir = Path("results/analysis/resources")
+                default_output_dir.mkdir(parents=True, exist_ok=True) 
+                output_filename = f"{input_file_path.stem}_resources.json"
+                output_file_path = default_output_dir / output_filename
+                logger.info(f"No output file specified. Defaulting to: {output_file_path}")
+            else:
+                output_file_path = Path(args.output)
+                output_file_path.parent.mkdir(parents=True, exist_ok=True)
+
+            try:
+                # Call the resource estimation function
+                # Assume it handles output based on dest and potentially internal logic
+                # It might print to console AND save to dest
+                results_data = analyze_resources_mod.estimate_resources(
+                    source=str(input_file_path), 
+                    dest=str(output_file_path)
+                )
+                # The function might return the data or None/True/False
+                # If it returns data and format is json, maybe print?
+                if args.format == "json" and results_data:
+                     try:
+                         print(json.dumps(results_data, indent=2))
+                     except TypeError:
+                         # Handle case where results_data is not JSON serializable (e.g., boolean)
+                         logger.debug("estimate_resources returned non-JSON data, relying on function's own output.")
+                
+                # We assume success if no exception was raised
+                logger.info(f"Resource estimation process completed for {input_file_path}. Output expected at {output_file_path}")
+                sys.exit(0) 
+            except Exception as e:
+                 logger.error(f"Resource estimation failed for {input_file_path}: {e}", exc_info=True)
+                 print(f"Error during resource estimation: {e}", file=sys.stderr)
+                 sys.exit(1)
+        else:
+            logger.error("estimate_resources function not found. Cannot execute command.")
+            print("Error: Command implementation missing.", file=sys.stderr)
+            sys.exit(1)
     elif args.analyze_cmd == "cost":
         if not args.output:
             # Default output path if not specified
