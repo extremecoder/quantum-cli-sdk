@@ -11,7 +11,7 @@ import requests
 # This assumes the tests are run from the project root directory
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / 'src'))
 
-from quantum_cli_sdk.commands.generate_tests import generate_tests, TOGETHER_API_ENDPOINT, DEFAULT_LLM_MODEL
+from quantum_cli_sdk.commands.generate_tests import generate_tests, LLM_API_ENDPOINT, DEFAULT_LLM_MODEL
 
 # Configure basic logging for tests
 logging.basicConfig(level=logging.DEBUG)

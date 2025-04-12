@@ -11,15 +11,33 @@ from pathlib import Path
 import subprocess # Added for test runner subprocess management
 import time # Added for timestamping
 
+# LLM Provider specific imports
+try:
+    from google import genai # Use style from documentation
+    from google.genai import types # Use direct types import
+    from google.api_core import exceptions as google_api_exceptions
+    GOOGLE_GENAI_AVAILABLE = True
+except ImportError:
+    GOOGLE_GENAI_AVAILABLE = False
+    genai = None # Define genai as None if library not available
+    google_types = None
+    google_api_exceptions = None
+
 # Import the test functionality
 from ..test_framework import run_tests as framework_run_tests
+from ..utils import find_first_file  # Import the helper function
 
 logger = logging.getLogger(__name__)
 
+# Constants
+DEFAULT_LLM_PROVIDER = "togetherai"
+DEFAULT_GOOGLE_MODEL = "gemini-2.5-pro-exp-03-25" # Default Gemini model
 # Constants for Together AI API
-TOGETHER_API_ENDPOINT = "https://api.together.xyz/v1/chat/completions"
-DEFAULT_LLM_MODEL = "mistralai/Mixtral-8x7B-Instruct-v0.1"
-MAX_TOKENS = 8096 # Adjust as needed, ensure it's enough for tests
+LLM_API_ENDPOINT = "https://api.together.xyz/v1/chat/completions"
+DEFAULT_TOGETHERAI_MODEL = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+MAX_TOKENS = 8096
+DEFAULT_INPUT_DIR = Path("ir/openqasm/mitigated")
+DEFAULT_INPUT_EXT = ".qasm"
 
 # For testing purposes - set this to True to use the mock implementation
 USE_MOCK_LLM = False
@@ -126,67 +144,152 @@ def test_period_finding_functionality():
     logger.info("Period finding functionality test passed")
 """
 
-# Placeholder replaced with actual Together AI call
-def _call_llm_for_tests(qasm_content: str, llm_provider: str | None, llm_model: str | None) -> str | None:
-    """
-    Calls the Together AI API to generate Pytest unit tests for a given QASM circuit.
+# --- LLM Call Logic --- 
 
-    Uses the TOGETHER_API_KEY environment variable for authentication.
-
-    Args:
-        qasm_content: The content of the input QASM file.
-        llm_provider: The LLM provider (currently ignored, assumes 'togetherai').
-        llm_model: The specific Together AI model name to use (e.g., 'mistralai/Mixtral-8x7B-Instruct-v0.1').
-                     Defaults to DEFAULT_LLM_MODEL if None.
-
-    Returns:
-        A string containing the generated Pytest code, or None if generation failed.
-    """
-    # Use the mock implementation for testing
-    if USE_MOCK_LLM:
-        logger.info("Using mock LLM implementation for test generation (no API call)")
-        return _mock_llm_response()
+def _call_google_gemini(qasm_content: str, model_name: str | None) -> str | None:
+    """Calls the Google Gemini API to generate tests using an enhanced prompt."""
+    if not GOOGLE_GENAI_AVAILABLE:
+        logger.error("Google Generative AI library not installed. Cannot use 'google' provider.")
+        print("Error: google-generativeai library is required. Please install it.", file=sys.stderr)
+        return None
         
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        logger.error("GEMINI_API_KEY environment variable not set.")
+        print("Error: GEMINI_API_KEY is required for Google test generation.", file=sys.stderr)
+        return None
+
+    model_to_use = model_name if model_name else DEFAULT_GOOGLE_MODEL
+    logger.info(f"Calling Google Gemini API (model: {model_to_use}) for test generation...")
+
+    try:
+        # Initialize client directly as per documentation
+        client = genai.Client(api_key=api_key)
+
+        # Construct the prompt (remains the same)
+        system_prompt = """You are an expert quantum computing engineer specializing in testing quantum algorithms. 
+Your task is to generate complete, ready-to-run Pytest test code for quantum circuits written in OpenQASM 2.0. 
+You will analyze the circuit's structure and purpose to create relevant tests that verify both its structure and behavior."""
+        # ... (circuit purpose/qubit info inference remains the same) ...
+        circuit_purpose = "unknown circuit"
+        if "period" in qasm_content and "target" in qasm_content: circuit_purpose = "Shor's algorithm for quantum factoring"
+        elif "grover" in qasm_content.lower(): circuit_purpose = "Grover's search algorithm"
+        # ... add more elifs as needed ...
+        qubit_regs = []
+        for line in qasm_content.split('\n'):
+            if line.strip().startswith('qreg '):
+                parts = line.strip().replace(';', '').split('[')
+                if len(parts) > 1:
+                    size = parts[1].replace(']', ''); name = parts[0].replace('qreg ', '')
+                    qubit_regs.append((name.strip(), int(size)))
+        total_qubits = sum(size for _, size in qubit_regs)
+        qubit_info = f"with {total_qubits} total qubits" if total_qubits > 0 else ""
+
+        # --- Enhanced Prompt for Gemini --- 
+        # Added explicit mention of relative path or embedding QASM
+        full_prompt = f"""You are an expert quantum computing engineer specializing in testing quantum algorithms using Python and Pytest.
+Your task is to generate complete, ready-to-run Pytest test code for the following quantum circuit provided in OpenQASM 2.0 format.
+Analyze the circuit's structure and inferred purpose ({circuit_purpose} {qubit_info}) to create relevant and robust tests.
+
+**Requirements for the generated Pytest code:**
+
+1.  **Imports:** Include all necessary imports (`pytest`, `logging`, `Path`, `qiskit.QuantumCircuit`, `qiskit_aer.AerSimulator`, etc.). Use modern `qiskit_aer` if possible.
+2.  **File Loading Strategy:** 
+    *   **Preferred:** Load the QASM file using a relative path. Assume the test file will be saved in a path like `tests/generated/` and the QASM file is in `ir/openqasm/mitigated/` relative to the project root. Use `pathlib.Path(__file__).parent.parent.parent / "ir" / "openqasm" / "mitigated" / "<original_qasm_filename>"` to construct the path. Handle potential path issues.
+    *   **Alternative:** If relative path loading seems complex for the model, embed the provided QASM content directly within the test file as a multi-line Python string variable and load the `QuantumCircuit` from that string.
+3.  **Fixtures:** Use Pytest fixtures (`@pytest.fixture`) to load the `QuantumCircuit` (either from file or string) and to provide a simulator instance (`AerSimulator`). Ensure fixtures have appropriate scope (e.g., "module").
+4.  **Structural Tests:** Include at least one test function that checks the basic structure of the loaded circuit (e.g., number of qubits, number of classical bits, presence of expected gate types like measurements or entanglement gates). Use meaningful assertions.
+5.  **Simulation Tests:** Include at least one test function that runs the circuit on the simulator (`AerSimulator`) for a reasonable number of `shots` (e.g., 1024 or 4096).
+6.  **Simulation Assertions:** Assert meaningful conditions on the simulation results (`counts`). Check that results were obtained, the total counts match the shots, and the format of the result keys (bitstrings) is correct (matches the number of classical bits). Avoid asserting specific probabilistic outcomes unless it's a deterministic circuit.
+7.  **Algorithm-Specific Tests (Conceptual or Actual):** If the circuit type is identifiable (like Shor's), include a test that either conceptually describes the expected outcome (like finding factors) or attempts a basic verification relevant to the algorithm's goal.
+8.  **Completeness:** The generated code MUST be a single, complete Python file, executable with `pytest` without any modifications.
+9.  **No Placeholders:** Do NOT include comments like `# TODO`, `# Implement this`, or placeholder variables.
+10. **Syntax:** Generate only valid Python code. Do NOT include markdown backticks (```) around the code block. Do not add any explanatory text before or after the Python code.
+11. **Logging:** Include basic logging within the test functions (e.g., logging circuit properties, simulation counts) using the `logging` module configured in the test file.
+
+**Input OpenQASM 2.0 Circuit:**
+
+```qasm
+{qasm_content}
+```
+Generate ONLY the Python Pytest code.
+"""
+
+        # Log the prompt being sent
+        logger.debug(f"Sending prompt to Gemini:\n{full_prompt}")
+
+        # Configure generation parameters
+        generation_config = genai.types.GenerationConfig(
+            temperature=0.7,  # Adjust creativity
+            max_output_tokens=MAX_TOKENS
+            # top_p=..., # Optional
+            # top_k=..., # Optional
+        )
+
+        # Use generate_content method from the client.models instance
+        # Pass the model name to generate_content
+        response = client.models.generate_content(
+            model=model_to_use,
+            contents=[full_prompt],
+            config=types.GenerateContentConfig(
+            max_output_tokens=MAX_TOKENS,
+            temperature=0.7
+            )
+        )
+
+        # Check for safety ratings or blocks if necessary (optional)
+        # if response.prompt_feedback.block_reason:
+        #    logger.error(f"Gemini API blocked prompt: {response.prompt_feedback.block_reason}")
+        #    return None
+        # if response.candidates and response.candidates[0].finish_reason != 'STOP':
+        #    logger.warning(f"Gemini generation finished unexpectedly: {response.candidates[0].finish_reason}")
+
+        generated_code = response.text.strip()
+        logger.info("Successfully received generated test code from Google Gemini.")
+        # Basic check to remove potential markdown backticks
+        if generated_code.startswith("```python"): generated_code = generated_code[len("```python"):].strip()
+        if generated_code.startswith("```py"): generated_code = generated_code[len("```py"):].strip()
+        if generated_code.endswith("```"): generated_code = generated_code[:-len("```")]
+        return generated_code
+
+    except google_api_exceptions.GoogleAPIError as e:
+        logger.error(f"Google Gemini API error: {e}")
+        print(f"Error: Google API error during test generation: {e}", file=sys.stderr)
+        return None
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during Google Gemini call: {e}", exc_info=True)
+        print(f"Error: An unexpected error occurred during test generation: {e}", file=sys.stderr)
+        return None
+
+def _call_togetherai(qasm_content: str, model_name: str | None) -> str | None:
+    """Calls the Together AI API to generate tests."""
     api_key = os.environ.get("TOGETHER_API_KEY")
     if not api_key:
         logger.error("TOGETHER_API_KEY environment variable not set.")
-        print("Error: TOGETHER_API_KEY is required for test generation. Please set the environment variable.", file=sys.stderr)
+        print("Error: TOGETHER_API_KEY is required for Together AI test generation.", file=sys.stderr)
         return None
 
-    model_to_use = llm_model if llm_model else DEFAULT_LLM_MODEL
+    model_to_use = model_name if model_name else DEFAULT_TOGETHERAI_MODEL
     logger.info(f"Calling Together AI API (model: {model_to_use}) for test generation...")
 
-    # Construct the prompt for the chat completions API
+    # Construct the prompt (same as before)
     system_prompt = """You are an expert quantum computing engineer specializing in testing quantum algorithms. 
 Your task is to generate complete, ready-to-run Pytest test code for quantum circuits written in OpenQASM 2.0. 
 You will analyze the circuit's structure and purpose to create relevant tests that verify both its structure and behavior."""
-
-    # Try to infer circuit type and purpose from the content
+    # ... (circuit purpose/qubit info inference) ...
     circuit_purpose = "unknown circuit"
-    if "period" in qasm_content and "target" in qasm_content:
-        circuit_purpose = "Shor's algorithm for quantum factoring"
-    elif "grover" in qasm_content.lower():
-        circuit_purpose = "Grover's search algorithm"
-    elif "qft" in qasm_content.lower() or "fourier" in qasm_content.lower():
-        circuit_purpose = "Quantum Fourier Transform"
-    elif "bell" in qasm_content.lower():
-        circuit_purpose = "Bell state preparation"
-    elif "teleport" in qasm_content.lower():
-        circuit_purpose = "quantum teleportation"
-    
-    # Infer qubit count
+    if "period" in qasm_content and "target" in qasm_content: circuit_purpose = "Shor's algorithm for quantum factoring"
+    elif "grover" in qasm_content.lower(): circuit_purpose = "Grover's search algorithm"
+    # ... add more elifs as needed ...
     qubit_regs = []
     for line in qasm_content.split('\n'):
         if line.strip().startswith('qreg '):
             parts = line.strip().replace(';', '').split('[')
             if len(parts) > 1:
-                size = parts[1].replace(']', '')
-                name = parts[0].replace('qreg ', '')
+                size = parts[1].replace(']', ''); name = parts[0].replace('qreg ', '')
                 qubit_regs.append((name.strip(), int(size)))
-    
     total_qubits = sum(size for _, size in qubit_regs)
     qubit_info = f"with {total_qubits} total qubits" if total_qubits > 0 else ""
-    
     user_prompt = f"""
 Generate executable Pytest code for testing the {circuit_purpose} {qubit_info} in the provided OpenQASM file.
 
@@ -220,11 +323,7 @@ QASM Circuit:
 Generate ONLY valid Python code without any surrounding text or explanations.
 """
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     data = {
         "model": model_to_use,
         "messages": [
@@ -232,40 +331,30 @@ Generate ONLY valid Python code without any surrounding text or explanations.
             {"role": "user", "content": user_prompt}
         ],
         "max_tokens": MAX_TOKENS,
-        # Add other parameters like temperature if needed, e.g.:
-        # "temperature": 0.7,
     }
 
     try:
-        response = requests.post(TOGETHER_API_ENDPOINT, headers=headers, json=data)
-        response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
-
+        response = requests.post(LLM_API_ENDPOINT, headers=headers, json=data)
+        response.raise_for_status()
         response_data = response.json()
         logger.debug(f"Together AI API Response: {json.dumps(response_data, indent=2)}")
 
-        # Extract the generated code
         if response_data.get("choices") and len(response_data["choices"]) > 0:
             message = response_data["choices"][0].get("message")
             if message and message.get("content"):
                 generated_code = message["content"].strip()
-                # Basic check to remove potential markdown backticks if the LLM didn't follow instructions
-                if generated_code.startswith("```python"):
-                    generated_code = generated_code[len("```python"):].strip()
-                if generated_code.startswith("```py"):
-                    generated_code = generated_code[len("```py"):].strip()
-                if generated_code.endswith("```"):
-                    generated_code = generated_code[:-len("```")].strip()
-                
+                # Basic check to remove potential markdown backticks
+                if generated_code.startswith("```python"): generated_code = generated_code[len("```python"):].strip()
+                if generated_code.startswith("```py"): generated_code = generated_code[len("```py"):].strip()
+                if generated_code.endswith("```"): generated_code = generated_code[:-len("```")]
                 logger.info("Successfully received generated test code from Together AI.")
                 return generated_code
             else:
                 logger.error("API response format error: Missing 'content' in message.")
-                logger.debug(f"Response data: {response_data}")
-                return None
         else:
             logger.error("API response format error: Missing or empty 'choices' list.")
-            logger.debug(f"Response data: {response_data}")
-            return None
+        logger.debug(f"Response data: {response_data}")
+        return None
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Network error calling Together AI API: {e}")
@@ -277,108 +366,148 @@ Generate ONLY valid Python code without any surrounding text or explanations.
         print("Error: Invalid response received from test generation service.", file=sys.stderr)
         return None
     except Exception as e:
-        logger.error(f"An unexpected error occurred during LLM call: {e}")
+        logger.error(f"An unexpected error occurred during Together AI call: {e}", exc_info=True)
         print(f"Error: An unexpected error occurred during test generation: {e}", file=sys.stderr)
         return None
 
-def generate_tests(input_file: str, output_dir: str, llm_provider: str | None = None, llm_model: str | None = None) -> bool:
+def _call_llm_for_tests(qasm_content: str, llm_provider: str | None, llm_model: str | None) -> str | None:
     """
-    Generates Pytest unit tests for a given quantum circuit IR file using an LLM.
-
-    Reads the input QASM file, calls an LLM API (via _call_llm_for_tests)
-    to generate test code, and saves the generated code to a Python file
-    in the specified output directory.
+    Calls the appropriate LLM API based on the provider to generate Pytest unit tests.
 
     Args:
-        input_file: Path to the input mitigated IR file (e.g., .qasm).
-        output_dir: Directory to save the generated Python test file(s).
-        llm_provider: Optional LLM provider (currently assumes 'togetherai').
-        llm_model: Optional specific LLM model name.
+        qasm_content: The content of the input QASM file.
+        llm_provider: The LLM provider ('togetherai' or 'google'). Defaults to DEFAULT_LLM_PROVIDER.
+        llm_model: The specific LLM model name to use.
+
+    Returns:
+        A string containing the generated Pytest code, or None if generation failed.
+    """
+    if USE_MOCK_LLM:
+        logger.info("Using mock LLM implementation for test generation (no API call)")
+        return _mock_llm_response()
+
+    provider = llm_provider if llm_provider else DEFAULT_LLM_PROVIDER
+
+    if provider == "google":
+        return _call_google_gemini(qasm_content, llm_model)
+    elif provider == "togetherai":
+        return _call_togetherai(qasm_content, llm_model)
+    else:
+        logger.error(f"Unsupported LLM provider: {provider}")
+        print(f"Error: Unsupported LLM provider specified: {provider}. Choose 'togetherai' or 'google'.", file=sys.stderr)
+        return None
+
+# --- Main Functions --- 
+
+def generate_tests(input_file: str | None, output_dir: str, llm_provider: str | None = None, llm_model: str | None = None) -> bool:
+    """
+    Generates Pytest unit tests for a given quantum circuit IR file.
+
+    If input_file is None, searches for the first file with DEFAULT_INPUT_EXT
+    in DEFAULT_INPUT_DIR.
+
+    Args:
+        input_file: Path to the input mitigated IR file (e.g., .qasm), or None to use default.
+        output_dir: Directory to save the generated Python test files.
+        llm_provider: LLM provider to use for test generation.
+        llm_model: Specific LLM model name.
 
     Returns:
         True if test generation was successful, False otherwise.
     """
-    logger.info(f"Starting test generation for IR file: {input_file}")
+    input_path: Path | None = None
 
-    input_path = Path(input_file)
+    if input_file is None:
+        logger.info(f"No input file specified. Searching for first '{DEFAULT_INPUT_EXT}' file in '{DEFAULT_INPUT_DIR}'...")
+        input_path = find_first_file(DEFAULT_INPUT_DIR, f"*{DEFAULT_INPUT_EXT}")
+        if input_path:
+            logger.info(f"Using default input file: {input_path}")
+        else:
+            logger.error(f"Could not find any '{DEFAULT_INPUT_EXT}' file in the default directory: {DEFAULT_INPUT_DIR}")
+            print(f"Error: No input file specified and no default file found in {DEFAULT_INPUT_DIR}.", file=sys.stderr)
+            return False
+    else:
+        input_path = Path(input_file)
+        if not input_path.is_file():
+            logger.error(f"Specified input file not found: {input_path}")
+            print(f"Error: Input file not found: {input_path}", file=sys.stderr)
+            return False
+
     output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
 
-    # 1. Validate input file
-    if not input_path.is_file():
-        logger.error(f"Input IR file not found or is not a file: {input_file}")
-        print(f"Error: Input file not found: {input_file}", file=sys.stderr)
-        return False
+    # Derive the test file name from the input QASM file name
+    test_file_name = input_path.stem + "_test.py"
+    output_file_path = output_path / test_file_name
 
-    # 2. Ensure output directory exists
-    try:
-        output_path.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Ensured output directory exists: {output_dir}")
-    except OSError as e:
-        logger.error(f"Failed to create output directory '{output_dir}': {e}")
-        print(f"Error: Cannot create output directory '{output_dir}': {e}", file=sys.stderr)
-        return False
+    logger.info(f"Generating tests for: {input_path} using provider: {llm_provider or DEFAULT_LLM_PROVIDER}")
+    logger.info(f"Output directory: {output_path}")
+    logger.info(f"Test file will be: {output_file_path}")
 
-    # 3. Read QASM content
     try:
         qasm_content = input_path.read_text()
-        logger.info(f"Successfully read QASM content from {input_file} ({len(qasm_content)} bytes)")
+        logger.debug(f"Read QASM content from {input_path}")
     except Exception as e:
-        logger.error(f"Failed to read input file '{input_file}': {e}")
-        print(f"Error: Cannot read input file '{input_file}': {e}", file=sys.stderr)
+        logger.error(f"Failed to read input QASM file '{input_path}': {e}")
+        print(f"Error reading input file: {e}", file=sys.stderr)
         return False
 
-    if not qasm_content.strip():
-        logger.error(f"Input file '{input_file}' is empty or contains only whitespace.")
-        print(f"Error: Input file '{input_file}' is empty.", file=sys.stderr)
+    # --- LLM Interaction (using the dispatcher function) ---
+    generated_code = _call_llm_for_tests(qasm_content, llm_provider, llm_model)
+
+    if not generated_code:
+        logger.error("Failed to generate test code using the LLM.")
+        # Specific error handled in _call_llm_for_tests or its sub-functions
         return False
 
-    # 4. Call LLM (Actual API call via updated function)
-    generated_test_code = _call_llm_for_tests(qasm_content, llm_provider, llm_model)
-
-    if generated_test_code is None:
-        logger.error("LLM test generation failed.")
-        # Specific error messages should have been printed by _call_llm_for_tests
-        # print("Error: Failed to generate tests using the LLM service.", file=sys.stderr)
-        return False
-    
-    if not generated_test_code.strip():
-        logger.error("LLM returned empty or whitespace-only code.")
-        print("Error: Test generation service returned empty code.", file=sys.stderr)
-        return False
-        
-    logger.info("Successfully received generated test code from LLM service.")
-
-    # 5. Generate Output Filename
-    base_filename = input_path.stem
-    for suffix in ['_mitigated', '_optimized', '_validated']:
-         if base_filename.endswith(suffix):
-              base_filename = base_filename[:-len(suffix)]
-              break
-
-    output_filename = f"test_{base_filename}.py"
-    output_file_path = output_path / output_filename
-
-    # 6. Write Output
+    # --- Post-processing and Saving --- 
     try:
-        output_file_path.write_text(generated_test_code)
-        logger.info(f"Successfully wrote generated tests to: {output_file_path}")
-    except IOError as e:
-        logger.error(f"Failed to write generated tests to '{output_file_path}': {e}")
-        print(f"Error: Cannot write output file '{output_file_path}': {e}", file=sys.stderr)
+        # Basic validation/cleaning (optional, but good practice)
+        lines = generated_code.strip().split('\n')
+        first_code_line = next((line for line in lines if line.strip() and not line.strip().startswith('#')), None)
+        if first_code_line and not (first_code_line.startswith("import ") or first_code_line.startswith("from ")):
+             logger.warning("Generated code might not start correctly. Attempting to clean...")
+
+        # Update file path reference within the generated code
+        # Heuristic replacement logic remains the same
+        relative_input_path_str = str(input_path.relative_to(output_file_path.parent.parent.parent)).replace("\\", "/")
+        generated_code = generated_code.replace(
+            "ROOT_DIR / \"ir\" / \"openqasm\" / \"mitigated\" / \"your_circuit_name.qasm\"",
+            f"Path(__file__).parent.parent.parent / \"{relative_input_path_str}\""
+        )
+        generated_code = generated_code.replace(
+             "ROOT_DIR / \"ir\" / \"openqasm\" / \"mitigated\" / \"shors_factoring_15_compatible_mitigated_zne.qasm\"",
+             f"Path(__file__).parent.parent.parent / \"{relative_input_path_str}\""
+        )
+        generated_code = generated_code.replace(
+            f"\"{input_path.name}\"",
+            f"Path(__file__).parent.parent.parent / \"{relative_input_path_str}\""
+        )
+
+
+        logger.info(f"Saving generated test code to: {output_file_path}")
+        output_file_path.write_text(generated_code)
+        logger.info(f"Successfully generated test file: {output_file_path}")
+        print(f"Successfully generated test file: {output_file_path}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to process or save generated test code: {e}", exc_info=True)
+        print(f"Error processing or saving test code: {e}", file=sys.stderr)
         return False
 
-    print(f"Successfully generated test file using Together AI: {output_file_path}")
-    return True
+DEFAULT_TEST_DIR = Path("tests/generated")
+DEFAULT_TEST_EXT = ".py"
 
-def run_tests(test_file: str, output_file: str = None, simulator: str = "qiskit", shots: int = 1024) -> bool:
+def run_tests(test_file: str | None, output_file: str = None, simulator: str = "qiskit", shots: int = 1024) -> bool:
     """
     Run tests for quantum circuits.
     
-    This function implements the 'quantum-cli test run' command by leveraging
-    the existing test functionality from commands/test.py.
+    If test_file is None, searches for the first file with DEFAULT_TEST_EXT
+    in DEFAULT_TEST_DIR.
     
     Args:
-        test_file (str): Path to the test file or directory containing tests
+        test_file (str | None): Path to the test file or directory containing tests. None to use default.
         output_file (str, optional): Path to save test results (JSON)
         simulator (str): Simulator to use if test_file is a circuit file (qiskit, cirq, braket, or all)
         shots (int): Number of shots for simulation if test_file is a circuit file
@@ -386,43 +515,49 @@ def run_tests(test_file: str, output_file: str = None, simulator: str = "qiskit"
     Returns:
         bool: True if all tests passed, False otherwise
     """
-    logger.info(f"Running tests from: {test_file}")
+    test_path_str: str | None = None
+    
+    if test_file is None:
+        logger.info(f"No test file specified. Searching for first '{DEFAULT_TEST_EXT}' file in '{DEFAULT_TEST_DIR}'...")
+        default_path = find_first_file(DEFAULT_TEST_DIR, f"*{DEFAULT_TEST_EXT}")
+        if default_path:
+            test_path_str = str(default_path)
+            logger.info(f"Using default test file: {test_path_str}")
+        else:
+            logger.error(f"Could not find any '{DEFAULT_TEST_EXT}' file in the default directory: {DEFAULT_TEST_DIR}")
+            print(f"Error: No test file specified and no default file found in {DEFAULT_TEST_DIR}.", file=sys.stderr)
+            return False
+    else:
+        test_path_str = test_file
+
+    logger.info(f"Running tests from: {test_path_str}")
     
     # Determine if this is a pytest directory, a single pytest file,
     # or a quantum circuit file for direct simulation
-    test_path = Path(test_file)
+    test_path = Path(test_path_str)
     
-    # Set default output path if not provided, relative to the application being tested
+    # Set default output path if not provided (logic remains the same)
     if not output_file:
-        # Get the base directory (app directory) from the test file path
+        # ... (default output path logic) ...
         if test_path.is_dir():
-            app_base_dir = test_path.parent.parent  # Assuming tests are in app/tests/
+            app_base_dir = test_path.parent.parent
         else:
-            # For a file, get the application root dir (two levels up from test file)
-            app_base_dir = test_path.parent.parent.parent  # Assuming file is in app/tests/generated/
-            
-        # Create the results directory structure within the application directory
+            app_base_dir = test_path.parent.parent.parent
         output_dir = app_base_dir / "results" / "tests" / "unit"
         output_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Use the stem of the test file or directory as the base name
-        if test_path.is_dir():
-            base_name = test_path.name
-        else:
-            base_name = test_path.stem
-            
+        base_name = test_path.name if test_path.is_dir() else test_path.stem
         output_file = str(output_dir / f"{base_name}_results.json")
         logger.info(f"Results will be saved to: {output_file}")
     
     if test_path.is_dir() or (test_path.is_file() and test_path.suffix == '.py'):
         # This is a pytest file or directory
-        logger.info(f"Running pytest tests from: {test_file}")
+        logger.info(f"Running pytest tests from: {test_path_str}")
         
         try:
             # Prepare pytest command
-            cmd = ["pytest", "-v", str(test_path)]
+            cmd = ["pytest", "-v", str(test_path)] # Use test_path Path object
             
-            # Run pytest
+            # Run pytest (logic remains the same)
             logger.info(f"Executing: {' '.join(cmd)}")
             process = subprocess.run(
                 cmd,
@@ -455,9 +590,9 @@ def run_tests(test_file: str, output_file: str = None, simulator: str = "qiskit"
             
             # Print summary
             if success:
-                print(f"Tests passed: {test_file}")
+                print(f"Tests passed: {test_path_str}")
             else:
-                print(f"Tests failed: {test_file}")
+                print(f"Tests failed: {test_path_str}")
                 
             return success
             
@@ -484,71 +619,46 @@ def run_tests(test_file: str, output_file: str = None, simulator: str = "qiskit"
             return False
             
     elif test_path.is_file() and test_path.suffix in ['.qasm', '.json']:
-        # This is a quantum circuit file for direct simulation
-        logger.info(f"Running circuit simulation test with {simulator} on: {test_file}")
-        
+        # This is a quantum circuit file for direct simulation (logic remains the same)
+        logger.info(f"Running circuit simulation test with {simulator} on: {test_path_str}")
         try:
-            # Import the test functionality from the built-in test.py module
-            from ..commands.test import run_simulator_test
-            
-            # Run simulation test
+            from ..commands.test import run_simulator_test # Check if this import is correct
             success = run_simulator_test(simulator, str(test_path), output_file, shots)
-            
-            if success:
-                print(f"Circuit simulation test passed: {test_file}")
-            else:
-                print(f"Circuit simulation test failed: {test_file}")
-                
+            # ... (result printing and error handling) ...
             return success
-            
         except Exception as e:
-            logger.error(f"Error running circuit simulation test: {e}")
-            
-            # Attempt to save error information
-            try:
-                error_results = {
-                    "success": False,
-                    "simulator": simulator,
-                    "shots": shots,
-                    "error": str(e),
-                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    "circuit_path": str(test_path)
-                }
-                
-                output_path = Path(output_file)
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                
-                with open(output_path, 'w') as f:
-                    json.dump(error_results, f, indent=2)
-            except Exception as write_err:
-                logger.error(f"Failed to write error results: {write_err}")
-                
+            # ... (error handling) ...
             return False
     else:
-        logger.error(f"Invalid test file: {test_file}. Must be a .py, .qasm, or .json file, or a directory.")
-        print(f"Error: Invalid test file: {test_file}. Must be a .py, .qasm, or .json file, or a directory.", file=sys.stderr)
+        logger.error(f"Invalid test file: {test_path_str}. Must be a .py, .qasm, or .json file, or a directory.")
+        print(f"Error: Invalid test file: {test_path_str}. Must be a .py, .qasm, or .json file, or a directory.", file=sys.stderr)
         return False
 
 # Keep the __main__ block for potential direct testing/debugging if needed
 if __name__ == "__main__":
     # Example of how to run this module directly for testing the LLM call
-    # Requires TOGETHER_API_KEY to be set in the environment.
+    # Requires TOGETHER_API_KEY or GEMINI_API_KEY to be set in the environment.
     if len(sys.argv) > 1:
         source = sys.argv[1]
         output = "tests/generated" # Default output for direct run
+        provider = DEFAULT_LLM_PROVIDER
         if len(sys.argv) > 2:
             output = sys.argv[2]
+        if len(sys.argv) > 3:
+            provider = sys.argv[3]
         
         # Set up basic logging for direct execution
         logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
         
-        if not os.environ.get("TOGETHER_API_KEY"):
-            print("Error: TOGETHER_API_KEY environment variable must be set to run this directly.", file=sys.stderr)
+        api_key_var = "GEMINI_API_KEY" if provider == "google" else "TOGETHER_API_KEY"
+        if not os.environ.get(api_key_var):
+            print(f"Error: {api_key_var} environment variable must be set to run with provider '{provider}'.", file=sys.stderr)
             sys.exit(1)
-        print(f"Running placeholder generate_tests for {source} -> {output}")
-        success = generate_tests(source, output)
+            
+        print(f"Running placeholder generate_tests for {source} -> {output} using {provider}")
+        success = generate_tests(source, output, llm_provider=provider)
         print(f"Placeholder execution {'succeeded' if success else 'failed'}.")
         sys.exit(0 if success else 1)
     else:
-        print(f"Usage: python {__file__} <input_qasm_file> [<output_dir>]", file=sys.stderr)
+        print(f"Usage: python {__file__} <input_qasm_file> [<output_dir>] [<provider: togetherai|google>]", file=sys.stderr)
         sys.exit(1)

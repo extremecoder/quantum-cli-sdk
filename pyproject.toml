@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quantum-cli-sdk"
-version = "0.3.0"
+version = "0.3.2"
 description = "A CLI and SDK for quantum development"
 authors = [
     { name = "Abhishek Tamrakar", email = "trainings.abhishek@gmail.com" }
@@ -59,10 +59,6 @@ dependencies = [
     # OpenQASM support
     "openqasm3>=0.4.0",  # General OpenQASM 3.0 parsing
     
-    # Cross-platform tools
-    "pyquil>=3.0.0",  # For Rigetti compatibility
-    "qutip>=4.7.0",  # Quantum toolbox in Python
-    
     # Architecture components
     "pyyaml>=6.0.0",  # For configuration profiles
     "importlib_metadata>=6.0.0",  # For plugin discovery
@@ -85,6 +81,9 @@ dependencies = [
     # Visualization and reporting
     "seaborn>=0.12.0",  # For enhanced plotting
     "pandas>=1.5.0",  # For data handling and analysis
+
+    "together",
+    "google-genai"
 ]
 
 [project.urls]

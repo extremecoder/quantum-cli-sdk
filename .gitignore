@@ -37,3 +37,4 @@ venv.bak/
 # OS specific files
 .DS_Store
 
+my-app/

@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import yaml
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -129,4 +130,32 @@ def setup_logger(level=logging.INFO):
 def validate_config(config):
     """ Placeholder for validating config. """
     logger.info("Placeholder: Would validate config")
-    return True # Simulate success 
+    return True # Simulate success
+
+def find_first_file(directory: Path, pattern: str) -> Path | None:
+    """
+    Finds the first file matching the pattern in the specified directory,
+    sorted alphabetically.
+
+    Args:
+        directory: The directory to search within.
+        pattern: The glob pattern to match files against (e.g., '*.qasm').
+
+    Returns:
+        The Path object of the first matching file, or None if no file is found
+        or the directory doesn't exist.
+    """
+    try:
+        if not directory.is_dir():
+            logger.warning(f"Directory not found: {directory}")
+            return None
+        # Use sorted() to ensure consistent selection (first alphabetically)
+        for item in sorted(directory.glob(pattern)):
+            if item.is_file():
+                return item
+        return None  # No matching file found
+    except Exception as e:
+        logger.error(f"Error searching for file in {directory} with pattern {pattern}: {e}", exc_info=True)
+        return None
+
+# Add other utility functions here as needed... 

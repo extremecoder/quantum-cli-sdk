@@ -121,6 +121,31 @@ def initialize_sdk():
     
     return config
 
+def setup_init_commands(subparsers):
+    """Setup project initialization commands."""
+    # Project initialization commands
+    init_parser = subparsers.add_parser("init", help="Initialize a new quantum project")
+    init_subparsers = init_parser.add_subparsers(dest="init_cmd", help="Init command")
+    
+    # List available templates
+    list_parser = init_subparsers.add_parser("list", help="List available project templates")
+    
+    # Create a new project
+    create_parser = init_subparsers.add_parser("create", help="Create a new quantum project in the specified directory (default: current directory)")
+    create_parser.add_argument("directory", nargs='?', default='.', help="Directory name for the new project (default: current directory)")
+    create_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing files")
+
+def setup_security_commands(subparsers):
+    """Setup security scanning commands."""
+    security_parser = subparsers.add_parser("security", help="Commands for security analysis")
+    security_subparsers = security_parser.add_subparsers(dest="security_cmd", help="Security command", required=True)
+
+    # security scan
+    scan_parser = security_subparsers.add_parser("scan", help="Scan an IR file for potential security issues (default source: ir/openqasm/base/*.qasm)")
+    scan_parser.add_argument("input_file", nargs='?', default=None, help="Path to the IR file to scan (e.g., OpenQASM). If omitted, uses the first .qasm file found in ./ir/openqasm/base/")
+    scan_parser.add_argument("--output-file", "-o", default=None, help="Optional output file for scan results (JSON). Default: results/security/<input_stem>_scan_results.json")
+
+
 def setup_ir_commands(subparsers):
     """Setup Intermediate Representation (IR) commands."""
     ir_parser = subparsers.add_parser("ir", help="Commands for managing Intermediate Representation (IR)")
@@ -136,14 +161,14 @@ def setup_ir_commands(subparsers):
     generate_parser.add_argument("--llm-model", help="Specific LLM model name to use (default: 'mistralai/Mixtral-8x7B-Instruct-v0.1')")
 
     # ir validate
-    validate_parser = ir_subparsers.add_parser("validate", help="Validate IR file syntax and semantics")
-    validate_parser.add_argument("input_file", help="Path to the IR file to validate (e.g., .qasm)")
-    validate_parser.add_argument("--output", help="Optional output file for validation results (JSON)")
+    validate_parser = ir_subparsers.add_parser("validate", help="Validate IR file syntax and semantics (default source: ir/base/*.qasm)")
+    validate_parser.add_argument("input_file", nargs='?', default=None, help="Path to the IR file to validate (e.g., .qasm). If omitted, uses the first .qasm file found in ./ir/base/")
+    validate_parser.add_argument("--output-file", "-o", required=False, default=None, help="Optional output file for validation results (JSON). Default: results/validation/<input_stem>.json")
     validate_parser.add_argument("--llm-url", help="Optional URL to LLM service for enhanced validation")
 
     # ir optimize
     optimize_parser = ir_subparsers.add_parser("optimize", help="Optimize the quantum circuit IR")
-    optimize_parser.add_argument("--input-file", '-i', required=True, help="Path to the input OpenQASM file")
+    optimize_parser.add_argument("--input-file", '-i', required=False, help="Path to the input OpenQASM file")
     optimize_parser.add_argument("--output-file", '-o', default=None, help="Path to save the optimized OpenQASM file. Prints to stdout if not specified.")
     optimize_parser.add_argument("--level", '-l', type=int, default=2, choices=[0, 1, 2, 3], help="Optimization level (0=None, 1=Light, 2=Medium, 3=Heavy)")
     optimize_parser.add_argument("--target-depth", '-d', type=int, default=None, help="Target circuit depth (relevant for optimization level 3)")
@@ -159,8 +184,8 @@ def setup_ir_commands(subparsers):
 
     # ir finetune (placeholder)
     finetune_parser = ir_subparsers.add_parser("finetune", help="Fine-tune circuit based on analysis results and hardware constraints")
-    finetune_parser.add_argument("--input-file", '-i', required=True, help="Path to the input IR file (usually mitigated)")
-    finetune_parser.add_argument("--output-file", '-o', required=True, help="Path to save fine-tuning results (JSON)")
+    finetune_parser.add_argument("--input-file", '-i', required=False, help="Path to the input IR file (usually mitigated)")
+    finetune_parser.add_argument("--output-file", '-o', required=False, help="Path to save fine-tuning results (JSON)")
     finetune_parser.add_argument("--hardware", choices=["ibm", "aws", "google"], default="ibm", help="Target hardware platform for fine-tuning")
     finetune_parser.add_argument("--search", choices=["grid", "random"], default="random", help="Search method for hyperparameter optimization")
     finetune_parser.add_argument("--shots", type=int, default=1000, help="Number of shots for simulation during fine-tuning")
@@ -192,6 +217,28 @@ def setup_run_commands(subparsers):
     # hw_parser.add_argument("--output", required=True, help="Path to save hardware execution results (JSON)")
     # Add credentials, job management flags later
 
+def setup_test_commands(subparsers):
+    """Setup commands for testing quantum circuits."""
+    test_parser = subparsers.add_parser("test", help="Generate and run tests for quantum circuits")
+    test_subparsers = test_parser.add_subparsers(dest="test_cmd", help="Test command", required=True)
+
+    # test generate
+    generate_parser = test_subparsers.add_parser("generate", help="Generate test code from an IR file using LLM")
+    generate_parser.add_argument("--input-file", "-i", required=False, default=None, help="Path to the input mitigated IR file (e.g., .qasm). If omitted, searches in ir/openqasm/mitigated/ and uses the first file found.")
+    generate_parser.add_argument("--output-dir", "-o", default="tests/generated", help="Directory to save the generated Python test files (default: tests/generated)")
+    generate_parser.add_argument("--llm-provider", default="google", choices=["togetherai", "google"], help="LLM provider to use for test generation (default: togetherai)")
+    generate_parser.add_argument("--llm-model", help="Specific LLM model name (e.g., 'mistralai/Mixtral-8x7B-Instruct-v0.1' for togetherai, 'gemini-1.5-pro-latest' for google)")
+
+    # test run - implemented based on existing test function
+    run_parser = test_subparsers.add_parser("run", help="Run generated test file(s)")
+    run_parser.add_argument("test_file", nargs='?', default=None, help="Path to the test file or directory containing tests. If omitted, searches in tests/generated/ and runs the first .py file found.")
+    run_parser.add_argument("--output", help="Path to save test results (JSON)")
+    run_parser.add_argument("--simulator", choices=["qiskit", "cirq", "braket", "all"], default="qiskit", 
+                           help="Simulator to use for running tests (applicable if test_file is a circuit file)")
+    run_parser.add_argument("--shots", type=int, default=1024, 
+                           help="Number of shots for simulation (applicable if test_file is a circuit file)")
+
+
 def setup_analyze_commands(subparsers):
     """Setup commands for circuit analysis."""
     analyze_parser = subparsers.add_parser("analyze", help="Analyze quantum circuit properties")
@@ -220,26 +267,23 @@ def setup_analyze_commands(subparsers):
     benchmark_parser.add_argument("--shots", type=int, default=1000, help="Number of shots for simulation")
     benchmark_parser.set_defaults(func=lambda args: analyze_benchmark_mod.benchmark(args.ir_file, args.output))
 
-def setup_test_commands(subparsers):
-    """Setup commands for testing quantum circuits."""
-    test_parser = subparsers.add_parser("test", help="Generate and run tests for quantum circuits")
-    test_subparsers = test_parser.add_subparsers(dest="test_cmd", help="Test command", required=True)
+def setup_visualization_commands(subparsers):
+    """Setup visualization commands."""
+    vis_parser = subparsers.add_parser("visualize", help="Visualize circuits or results")
+    vis_subparsers = vis_parser.add_subparsers(dest="visualize_cmd", help="Visualization command", required=True)
 
-    # test generate
-    generate_parser = test_subparsers.add_parser("generate", help="Generate test code from an IR file using LLM")
-    generate_parser.add_argument("--input-file", "-i", required=True, help="Path to the input mitigated IR file (e.g., .qasm)")
-    generate_parser.add_argument("--output-dir", "-o", default="tests/generated", help="Directory to save the generated Python test files (default: tests/generated)")
-    generate_parser.add_argument("--llm-provider", help="LLM provider to use for test generation (e.g., 'openai', 'togetherai')")
-    generate_parser.add_argument("--llm-model", help="Specific LLM model name (requires --llm-provider)")
+    # visualize circuit
+    vis_circuit_parser = vis_subparsers.add_parser("circuit", help="Visualize a quantum circuit")
+    vis_circuit_parser.add_argument("--source", required=True, help="Path to the circuit file (QASM or other supported format)")
+    vis_circuit_parser.add_argument("--output", help="Output file path (e.g., .png, .txt, .html)")
+    vis_circuit_parser.add_argument("--format", choices=["text", "mpl", "latex", "html"], default="mpl", help="Output format")
 
-    # test run - implemented based on existing test function
-    run_parser = test_subparsers.add_parser("run", help="Run generated test file(s)")
-    run_parser.add_argument("test_file", help="Path to the test file or directory containing tests")
-    run_parser.add_argument("--output", help="Path to save test results (JSON)")
-    run_parser.add_argument("--simulator", choices=["qiskit", "cirq", "braket", "all"], default="qiskit", 
-                           help="Simulator to use for running tests (applicable if test_file is a circuit file)")
-    run_parser.add_argument("--shots", type=int, default=1024, 
-                           help="Number of shots for simulation (applicable if test_file is a circuit file)")
+    # visualize results
+    vis_results_parser = vis_subparsers.add_parser("results", help="Visualize simulation or hardware results")
+    vis_results_parser.add_argument("--source", required=True, help="Path to the results file (JSON)")
+    vis_results_parser.add_argument("--output", help="Output file path (e.g., .png)")
+    vis_results_parser.add_argument("--type", choices=["histogram", "statevector", "hinton", "qsphere"], default="histogram", help="Type of plot")
+    vis_results_parser.add_argument("--interactive", action="store_true", help="Show interactive plot")
 
 def setup_service_commands(subparsers):
     """Setup commands for microservice management."""
@@ -297,6 +341,46 @@ def setup_hub_commands(subparsers):
     # publish_parser.add_argument("--username", help="Quantum Hub username (or use env var/config)")
     # publish_parser.add_argument("--token", help="Quantum Hub API token (or use env var/config)")
     # Add other metadata flags if needed (e.g., --description, --tags)
+
+def setup_job_commands(subparsers):
+    """Setup job management commands."""
+    # Job management commands
+    jobs_parser = subparsers.add_parser("jobs", help="Manage quantum execution jobs")
+    jobs_subparsers = jobs_parser.add_subparsers(dest="jobs_cmd", help="Jobs command")
+    
+    # List jobs
+    list_parser = jobs_subparsers.add_parser("list", help="List jobs")
+    list_parser.add_argument("--status", help="Filter by status (comma-separated)")
+    list_parser.add_argument("--provider", help="Filter by provider")
+    list_parser.add_argument("--backend", help="Filter by backend")
+    list_parser.add_argument("--days", type=int, default=7, help="Show jobs from the last N days")
+    list_parser.add_argument("--storage-path", help="Jobs storage path", default=config_manager.get_default_param("jobs", "storage_path"))
+    
+    # Get job details
+    get_parser = jobs_subparsers.add_parser("get", help="Get job details")
+    get_parser.add_argument("job_id", help="Job ID")
+    get_parser.add_argument("--storage-path", help="Jobs storage path", default=config_manager.get_default_param("jobs", "storage_path"))
+    
+    # Get job results
+    results_parser = jobs_subparsers.add_parser("results", help="Get job results")
+    results_parser.add_argument("job_id", help="Job ID")
+    results_parser.add_argument("--output-file", help="Output file path")
+    results_parser.add_argument("--output-format", help="Output format", choices=["text", "json", "csv"], default="text")
+    results_parser.add_argument("--storage-path", help="Jobs storage path", default=config_manager.get_default_param("jobs", "storage_path"))
+    
+    # Cancel job
+    cancel_parser = jobs_subparsers.add_parser("cancel", help="Cancel a job")
+    cancel_parser.add_argument("job_id", help="Job ID")
+    cancel_parser.add_argument("--storage-path", help="Jobs storage path", default=config_manager.get_default_param("jobs", "storage_path"))
+    
+    # Monitor jobs
+    monitor_parser = jobs_subparsers.add_parser("monitor", help="Monitor jobs")
+    monitor_parser.add_argument("--job-id", help="Specific job ID to monitor")
+    monitor_parser.add_argument("--status", help="Filter by status (comma-separated)")
+    monitor_parser.add_argument("--interval", type=int, help="Update interval in seconds", 
+                               default=config_manager.get_default_param("jobs", "monitor_interval"))
+    monitor_parser.add_argument("--storage-path", help="Jobs storage path", default=config_manager.get_default_param("jobs", "storage_path"))
+
 
 def setup_versioning_commands(subparsers):
     """Setup versioning-related commands."""
@@ -465,44 +549,6 @@ def setup_hardware_commands(subparsers):
     hardware_parser.add_argument("--top", type=int, default=3, help="Number of recommendations to show")
     hardware_parser.add_argument("--update-catalog", action="store_true", help="Update hardware catalog before searching")
 
-def setup_job_commands(subparsers):
-    """Setup job management commands."""
-    # Job management commands
-    jobs_parser = subparsers.add_parser("jobs", help="Manage quantum execution jobs")
-    jobs_subparsers = jobs_parser.add_subparsers(dest="jobs_cmd", help="Jobs command")
-    
-    # List jobs
-    list_parser = jobs_subparsers.add_parser("list", help="List jobs")
-    list_parser.add_argument("--status", help="Filter by status (comma-separated)")
-    list_parser.add_argument("--provider", help="Filter by provider")
-    list_parser.add_argument("--backend", help="Filter by backend")
-    list_parser.add_argument("--days", type=int, default=7, help="Show jobs from the last N days")
-    list_parser.add_argument("--storage-path", help="Jobs storage path", default=config_manager.get_default_param("jobs", "storage_path"))
-    
-    # Get job details
-    get_parser = jobs_subparsers.add_parser("get", help="Get job details")
-    get_parser.add_argument("job_id", help="Job ID")
-    get_parser.add_argument("--storage-path", help="Jobs storage path", default=config_manager.get_default_param("jobs", "storage_path"))
-    
-    # Get job results
-    results_parser = jobs_subparsers.add_parser("results", help="Get job results")
-    results_parser.add_argument("job_id", help="Job ID")
-    results_parser.add_argument("--output-file", help="Output file path")
-    results_parser.add_argument("--output-format", help="Output format", choices=["text", "json", "csv"], default="text")
-    results_parser.add_argument("--storage-path", help="Jobs storage path", default=config_manager.get_default_param("jobs", "storage_path"))
-    
-    # Cancel job
-    cancel_parser = jobs_subparsers.add_parser("cancel", help="Cancel a job")
-    cancel_parser.add_argument("job_id", help="Job ID")
-    cancel_parser.add_argument("--storage-path", help="Jobs storage path", default=config_manager.get_default_param("jobs", "storage_path"))
-    
-    # Monitor jobs
-    monitor_parser = jobs_subparsers.add_parser("monitor", help="Monitor jobs")
-    monitor_parser.add_argument("--job-id", help="Specific job ID to monitor")
-    monitor_parser.add_argument("--status", help="Filter by status (comma-separated)")
-    monitor_parser.add_argument("--interval", type=int, help="Update interval in seconds", 
-                               default=config_manager.get_default_param("jobs", "monitor_interval"))
-    monitor_parser.add_argument("--storage-path", help="Jobs storage path", default=config_manager.get_default_param("jobs", "storage_path"))
 
 def setup_config_commands(subparsers):
     """Setup configuration commands."""
@@ -579,19 +625,7 @@ def setup_dependency_commands(subparsers):
     verify_parser.add_argument("package", help="Package name")
     verify_parser.add_argument("--version", "-v", help="Required version specification")
 
-def setup_init_commands(subparsers):
-    """Setup project initialization commands."""
-    # Project initialization commands
-    init_parser = subparsers.add_parser("init", help="Initialize a new quantum project")
-    init_subparsers = init_parser.add_subparsers(dest="init_cmd", help="Init command")
-    
-    # List available templates
-    list_parser = init_subparsers.add_parser("list", help="List available project templates")
-    
-    # Create a new project
-    create_parser = init_subparsers.add_parser("create", help="Create a new quantum project in the specified directory (default: current directory)")
-    create_parser.add_argument("directory", nargs='?', default='.', help="Directory name for the new project (default: current directory)")
-    create_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing files")
+
 
 def setup_template_commands(subparsers):
     """Setup template management commands (Placeholder)."""
@@ -604,33 +638,7 @@ def setup_template_commands(subparsers):
     # get_parser.add_argument("name", help="Template name")
     # get_parser.add_argument("--dest", "-d", help="Destination file")
 
-def setup_visualization_commands(subparsers):
-    """Setup visualization commands."""
-    vis_parser = subparsers.add_parser("visualize", help="Visualize circuits or results")
-    vis_subparsers = vis_parser.add_subparsers(dest="visualize_cmd", help="Visualization command", required=True)
 
-    # visualize circuit
-    vis_circuit_parser = vis_subparsers.add_parser("circuit", help="Visualize a quantum circuit")
-    vis_circuit_parser.add_argument("--source", required=True, help="Path to the circuit file (QASM or other supported format)")
-    vis_circuit_parser.add_argument("--output", help="Output file path (e.g., .png, .txt, .html)")
-    vis_circuit_parser.add_argument("--format", choices=["text", "mpl", "latex", "html"], default="mpl", help="Output format")
-
-    # visualize results
-    vis_results_parser = vis_subparsers.add_parser("results", help="Visualize simulation or hardware results")
-    vis_results_parser.add_argument("--source", required=True, help="Path to the results file (JSON)")
-    vis_results_parser.add_argument("--output", help="Output file path (e.g., .png)")
-    vis_results_parser.add_argument("--type", choices=["histogram", "statevector", "hinton", "qsphere"], default="histogram", help="Type of plot")
-    vis_results_parser.add_argument("--interactive", action="store_true", help="Show interactive plot")
-
-def setup_security_commands(subparsers):
-    """Setup security scanning commands."""
-    security_parser = subparsers.add_parser("security", help="Commands for security analysis")
-    security_subparsers = security_parser.add_subparsers(dest="security_cmd", help="Security command", required=True)
-
-    # security scan
-    scan_parser = security_subparsers.add_parser("scan", help="Scan an IR file for potential security issues")
-    scan_parser.add_argument("ir_file", help="Path to the IR file to scan (e.g., OpenQASM)")
-    scan_parser.add_argument("--output", help="Optional output file for scan results (JSON)")
 
 def main():
     """Main entry point for the Quantum CLI SDK."""
@@ -753,6 +761,23 @@ def main():
 
 # --- Command Handler Functions ---
 
+def handle_security_commands(args):
+    """Handle security subcommands."""
+    if args.security_cmd == "scan":
+        if hasattr(security_scan_mod, 'security_scan'):
+            # Pass the potentially None source_file and dest_file
+            success = security_scan_mod.security_scan(source_file=args.input_file, dest_file=args.output_file)
+            # The security_scan function returns True if no critical/high issues are found
+            print(f"Security scan completed.{' No critical or high severity issues found.' if success else ' Issues found.'}")
+            sys.exit(0) # Exit 0 regardless of findings, but success indicates severity level
+        else:
+            logger.error("security_scan function not found. Cannot execute command.")
+            print("Error: Command implementation missing.", file=sys.stderr)
+            sys.exit(1)
+    else:
+        print(f"Error: Unknown security command '{args.security_cmd}'", file=sys.stderr)
+        sys.exit(1)
+
 def handle_ir_commands(args):
     """Handle ir subcommands."""
     if args.ir_cmd == "generate":
@@ -766,7 +791,7 @@ def handle_ir_commands(args):
              sys.exit(1)
     elif args.ir_cmd == "validate":
         if hasattr(ir_validate_mod, 'validate_circuit'):
-             success = ir_validate_mod.validate_circuit(args.input_file, args.output, args.llm_url)
+             success = ir_validate_mod.validate_circuit(args.input_file, args.output_file, args.llm_url)
              sys.exit(0 if success else 1)
         else:
              logger.error("validate_circuit function not found in the corresponding module. Cannot execute command.")
@@ -863,19 +888,6 @@ def handle_test_commands(args):
         # Consider finding the parent parser to print help for the 'test' command
         sys.exit(1)
 
-def handle_security_commands(args):
-    """Handle security subcommands."""
-    if args.security_cmd == "scan":
-        if hasattr(security_scan_mod, 'scan_ir'):
-            success = security_scan_mod.scan_ir(args.ir_file, args.output)
-            sys.exit(0 if success else 1)
-        else:
-            logger.error("scan_ir function not found in security_scan_mod. Cannot execute command.")
-            print("Error: Command implementation missing.", file=sys.stderr)
-            sys.exit(1)
-    else:
-        print(f"Error: Unknown security command '{args.security_cmd}'", file=sys.stderr)
-        sys.exit(1)
 
 def handle_analyze_commands(args):
     """Handle circuit analysis commands."""

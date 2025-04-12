@@ -406,12 +406,12 @@ This structure is designed to work seamlessly with the Quantum CLI SDK commands 
 
 4.  **Validate the generated IR:**
     ```bash
-    quantum-cli ir validate ir/openqasm/base/my_circuit.qasm --output results/validation/my_circuit.json
+    quantum-cli ir validate ir/openqasm/base/my_circuit.qasm --output-file results/validation/my_circuit.json
     ```
 
 5.  **Scan the IR for security issues:**
     ```bash
-    quantum-cli security scan ir/openqasm/base/my_circuit.qasm --output results/security/my_circuit.json
+    quantum-cli security scan ir/openqasm/base/my_circuit.qasm --output-file results/security/my_circuit.json
     ```
 
 6.  **Simulate the circuit using Qiskit backend:**
@@ -434,9 +434,47 @@ This structure is designed to work seamlessly with the Quantum CLI SDK commands 
     quantum-cli ir optimize --input-file ir/openqasm/base/my_circuit.qasm --output-file ir/openqasm/optimized/my_circuit.qasm --level 2
     ```
 
-10. **Mitigate errors:**
+10.  **Simulate the optimized circuit using Qiskit backend:**
+    ```bash
+    quantum-cli run simulate ir/openqasm/optimized/my_circuit.qasm --backend qiskit --shots 2048 --output results/simulation/optimized/my_circuit_qiskit.json
+    ```
+
+11.  **Simulate the optimized circuit using Cirq backend:**
+    ```bash
+    quantum-cli run simulate ir/openqasm/optimized/my_circuit.qasm --backend cirq --shots 1024 --output results/simulation/optimized/my_circuit_cirq.json
+    ```
+
+12.  **Simulate the optimized circuit using Braket backend:**
+    ```bash
+    quantum-cli run simulate ir/openqasm/optimized/my_circuit.qasm --backend braket --shots 1000 --output results/simulation/optimized/my_circuit_braket.json
+    ```
+
+13. **Mitigate errors:**
     ```bash
     quantum-cli ir mitigate --input-file ir/openqasm/optimized/my_circuit.qasm --output-file ir/openqasm/mitigated/my_circuit.qasm --technique zne
+    ```
+14.  **Simulate the mitigated circuit using Qiskit backend:**
+    ```bash
+    quantum-cli run simulate ir/openqasm/mitigated/my_circuit.qasm --backend qiskit --shots 2048 --output results/simulation/mitigated/my_circuit_qiskit.json
+    ```
+
+15.  **Simulate the mitigated circuit using Cirq backend:**
+    ```bash
+    quantum-cli run simulate ir/openqasm/mitigated/my_circuit.qasm --backend cirq --shots 1024 --output results/simulation/mitigated/my_circuit_cirq.json
+    ```
+
+16.  **Simulate the mitigated circuit using Braket backend:**
+    ```bash
+    quantum-cli run simulate ir/openqasm/mitigated/my_circuit.qasm --backend braket --shots 1000 --output results/simulation/mitigated/my_circuit_braket.json
+
+17. **Generate tests for the mitigated quantum circuit:**
+    ```bash
+    quantum-cli test generate --input-file ir/openqasm/mitigated/my_circuit.qasm --output-dir tests/generated
+    ```
+
+18. **Run generated tests:**
+    ```bash
+    quantum-cli test run tests/generated/ --output results/tests/unit/test_summary.json
     ```
 
 11. **Visualize the mitigated circuit:**
@@ -467,15 +505,6 @@ This structure is designed to work seamlessly with the Quantum CLI SDK commands 
     ```
     This command benchmarks the circuit's performance, providing metrics on execution time, transpilation quality, and resource efficiency across different quantum platforms.
 
-16. **Generate tests for the mitigated quantum circuit:**
-    ```bash
-    quantum-cli test generate --input-file ir/openqasm/mitigated/my_circuit.qasm --output-dir tests/generated
-    ```
-
-17. **Run generated tests:**
-    ```bash
-    quantum-cli test run tests/generated/ --output results/tests/unit/test_summary.json
-    ```
 
 18. **Fine-tune circuit for hardware-specific optimization (using mitigated circuit):**
     
