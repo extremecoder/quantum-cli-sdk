@@ -295,14 +295,14 @@ def setup_service_commands(subparsers):
     generate_parser.add_argument("input_file", nargs='?', default=None, help="Path to the input IR file (QASM) or ZIP package. If omitted, searches in ir/openqasm/mitigated/")
     generate_parser.add_argument("--output-dir", help="Directory to save the generated microservice code (default: services/generated/<basename>)")
     generate_parser.add_argument("--llm-url", help="URL to LLM service for enhanced code generation")
-    generate_parser.add_argument("--port", type=int, default=8000, help="Port number for the microservice (default: 8000)")
+    generate_parser.add_argument("--port", type=int, default=8889, help="Port number for the microservice (default: 8889)")
     generate_parser.add_argument("--app-root", help="Root directory of the application (default: current directory)")
     generate_parser.add_argument("--base-image", help="Custom Docker base image to use (default: quantum-cli-sdk/microservice-base:latest)")
 
     # service run (new command for running a microservice)
     run_parser = service_subparsers.add_parser("run", help="Run a generated microservice locally")
     run_parser.add_argument("service_dir", help="Path to the generated microservice directory")
-    run_parser.add_argument("--port", type=int, default=8000, help="Port number for the microservice (default: 8000)")
+    run_parser.add_argument("--port", type=int, default=8889, help="Port number for the microservice (default: 8889)")
     run_parser.add_argument("--use-docker", action="store_true", help="Run the service using Docker")
     run_parser.add_argument("--detach", action="store_true", help="Run the service in detached mode (background)")
 
@@ -1200,7 +1200,7 @@ def handle_service_commands(args):
                 sys.exit(1)
             
             # Run the Docker container
-            port = args.port if hasattr(args, 'port') else 8000
+            port = args.port if hasattr(args, 'port') else 8889
             run_cmd = ["run", "-p", f"{port}:{port}"]
             
             if hasattr(args, 'detach') and args.detach:
@@ -1232,7 +1232,7 @@ def handle_service_commands(args):
                 subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], check=True)
             
             # Run with uvicorn
-            port = args.port if hasattr(args, 'port') else 8000
+            port = args.port if hasattr(args, 'port') else 8889
             cmd = [sys.executable, "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", str(port)]
             
             if hasattr(args, 'detach') and args.detach:
