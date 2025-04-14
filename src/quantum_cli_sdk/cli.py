@@ -1198,7 +1198,7 @@ def handle_service_commands(args):
         
         # Build the Docker image
         project_root = os.path.basename(os.path.dirname(service_dir_abs))
-        image_name = f"{project_root}-quantum-app"
+        image_name = f"{project_root}-as-quantum-service"
         image_tag = "latest"
         build_cmd = ["build", "-t", f"{image_name}:{image_tag}", service_dir_abs]
         

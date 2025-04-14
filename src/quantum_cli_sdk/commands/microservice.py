@@ -413,12 +413,12 @@ def test_hardware(provider: str) -> Dict[str, Any]:
     print(f"\\n===== Testing {{provider}} hardware =====")
     
     # Read the QASM file
-    with open("../{qasm_filename}", "r") as f:
-        circuit = f.read()
+    #with open("../{qasm_filename}", "r") as f:
+    #    circuit = f.read()
     
     # Create the payload
     payload = {{
-        "circuit": circuit,
+        #"circuit": circuit,
         "shots": 1024,
         "backend_type": "hardware",
         "backend_provider": provider,

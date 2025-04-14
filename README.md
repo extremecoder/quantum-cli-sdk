@@ -515,7 +515,7 @@ This structure is designed to work seamlessly with the Quantum CLI SDK commands 
 
     Running on hardware
     ```bash
-    quantum-cli ir finetune --input-file ir/openqasm/mitigated/my_circuit.qasm --output-file results/analysis/finetuning/my_circuit_finetuned.json --hardware ibm --search random --shots 1024 --use-hardware --device-id ibmq_manila
+    quantum-cli ir finetune --input-file ir/openqasm/mitigated/my_circuit.qasm --output-file results/analysis/finetune/my_circuit_finetuned.json --hardware ibm --search random --shots 1024 --use-hardware --device-id ibmq_manila
     ```
 
     This command fine-tunes a quantum circuit for specific hardware targets, using hyperparameter optimization to find the best transpiler settings, optimization levels, and other hardware-specific parameters.

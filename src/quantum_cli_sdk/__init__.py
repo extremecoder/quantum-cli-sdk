@@ -2,7 +2,7 @@
 Quantum SDK - A command-line interface and software development kit for quantum computing.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.3.4"
 
 from .quantum_circuit import QuantumCircuit
 from .simulator import run_simulation
