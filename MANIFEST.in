@@ -1,0 +1,6 @@
+include src/quantum_cli_sdk/templates/microservice/*
+include src/quantum_cli_sdk/templates/workflows/*
+include src/quantum_cli_sdk/templates/**/*
+recursive-include src/quantum_cli_sdk/templates *
+include README.md
+include LICENSE 

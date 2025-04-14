@@ -116,6 +116,9 @@ markers = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools]
+include-package-data = true
+
 [project.scripts]
 quantum-cli = "quantum_cli_sdk.cli:main"
 
