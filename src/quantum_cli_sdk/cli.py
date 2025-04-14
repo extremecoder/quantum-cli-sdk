@@ -300,11 +300,11 @@ def setup_service_commands(subparsers):
     generate_parser.add_argument("--base-image", help="Custom Docker base image to use (default: quantum-cli-sdk/microservice-base:latest)")
 
     # service run (new command for running a microservice)
-    run_parser = service_subparsers.add_parser("run", help="Run a generated microservice locally")
-    run_parser.add_argument("service_dir", help="Path to the generated microservice directory")
+    run_parser = service_subparsers.add_parser("run", help="Run a generated microservice using Docker with format: <project_root>-quantum-app")
+    run_parser.add_argument("service_dir", help="Path to the generated microservice directory (containing Dockerfile)")
     run_parser.add_argument("--port", type=int, default=8889, help="Port number for the microservice (default: 8889)")
-    run_parser.add_argument("--use-docker", action="store_true", help="Run the service using Docker")
     run_parser.add_argument("--detach", action="store_true", help="Run the service in detached mode (background)")
+    run_parser.add_argument("--env", "-e", action="append", help="Environment variables to pass to the container (format: KEY=VALUE). Can be used multiple times.")
 
     # service test-generate (placeholder)
     test_generate_parser = service_subparsers.add_parser("test-generate", help="Generate tests for a microservice")
@@ -1180,69 +1180,82 @@ def handle_service_commands(args):
             sys.exit(1)
     
     elif args.service_cmd == "run":
-        # Run the microservice either with Docker or directly
-        if hasattr(args, 'use_docker') and args.use_docker:
-            # Run with Docker
-            from ..utils import run_docker_command
-            
-            service_dir = os.path.abspath(args.service_dir)
-            if not os.path.exists(service_dir):
-                logger.error(f"Service directory not found: {service_dir}")
-                print(f"Error: Service directory not found: {service_dir}", file=sys.stderr)
-                sys.exit(1)
-            
-            # Build the Docker image
-            image_name = f"quantum-service-{os.path.basename(service_dir)}"
-            build_cmd = ["build", "-t", image_name, service_dir]
-            if not run_docker_command(build_cmd):
-                logger.error("Failed to build Docker image")
-                print("Error: Failed to build Docker image", file=sys.stderr)
-                sys.exit(1)
-            
-            # Run the Docker container
-            port = args.port if hasattr(args, 'port') else 8889
-            run_cmd = ["run", "-p", f"{port}:{port}"]
-            
-            if hasattr(args, 'detach') and args.detach:
-                run_cmd.append("-d")
-            
-            run_cmd.extend([image_name])
-            
-            if not run_docker_command(run_cmd):
-                logger.error("Failed to run Docker container")
-                print("Error: Failed to run Docker container", file=sys.stderr)
-                sys.exit(1)
-            
-            print(f"Microservice running at http://localhost:{port}")
+        # Run the microservice with Docker
+        from quantum_cli_sdk.utils import run_docker_command
+        
+        service_dir_abs = os.path.abspath(args.service_dir)
+        if not os.path.exists(service_dir_abs):
+            logger.error(f"Service directory not found: {service_dir_abs}")
+            print(f"Error: Service directory not found: {service_dir_abs}", file=sys.stderr)
+            sys.exit(1)
+        
+        # Check for Dockerfile in the service directory
+        dockerfile_path = os.path.join(service_dir_abs, "Dockerfile")
+        if not os.path.exists(dockerfile_path):
+            logger.error(f"Dockerfile not found in: {service_dir_abs}")
+            print(f"Error: Dockerfile not found in: {service_dir_abs}", file=sys.stderr)
+            sys.exit(1)
+        
+        # Build the Docker image
+        project_root = os.path.basename(os.path.dirname(service_dir_abs))
+        image_name = f"{project_root}-quantum-app"
+        image_tag = "latest"
+        build_cmd = ["build", "-t", f"{image_name}:{image_tag}", service_dir_abs]
+        
+        logger.info(f"Building Docker image: {image_name}:{image_tag}")
+        print(f"Building Docker image: {image_name}:{image_tag}")
+        
+        build_result = run_docker_command(build_cmd)
+        if not build_result.get("success", False):
+            logger.error(f"Failed to build Docker image: {build_result.get('stderr', '')}")
+            print(f"Error: Failed to build Docker image\n{build_result.get('stderr', '')}", file=sys.stderr)
+            sys.exit(1)
+        
+        # Run the Docker container
+        port = args.port if hasattr(args, 'port') else 8889
+        run_cmd = ["run", "-p", f"{port}:{port}"]
+        
+        if hasattr(args, 'detach') and args.detach:
+            run_cmd.append("-d")
         else:
-            # Run directly with uvicorn
-            import subprocess
-            
-            service_dir = os.path.abspath(args.service_dir)
-            if not os.path.exists(service_dir):
-                logger.error(f"Service directory not found: {service_dir}")
-                print(f"Error: Service directory not found: {service_dir}", file=sys.stderr)
-                sys.exit(1)
-            
-            # Change to the service directory
-            os.chdir(service_dir)
-            
-            # Check for requirements.txt and install if needed
-            if os.path.exists("requirements.txt"):
-                subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], check=True)
-            
-            # Run with uvicorn
-            port = args.port if hasattr(args, 'port') else 8889
-            cmd = [sys.executable, "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", str(port)]
-            
-            if hasattr(args, 'detach') and args.detach:
-                # Run in background
-                subprocess.Popen(cmd, cwd=service_dir)
-                print(f"Microservice running in background at http://localhost:{port}")
-            else:
-                # Run in foreground
-                print(f"Starting microservice at http://localhost:{port}")
-                subprocess.run(cmd, cwd=service_dir)
+            run_cmd.extend(["-it"])
+        
+        # Add environment variables if specified
+        if hasattr(args, 'env') and args.env:
+            for env_var in args.env:
+                run_cmd.extend(["-e", env_var])
+        
+        # Automatically pass IBM_QUANTUM_TOKEN from environment if it exists
+        ibm_token = os.environ.get("IBM_QUANTUM_TOKEN")
+        if ibm_token:
+            run_cmd.extend(["-e", f"IBM_QUANTUM_TOKEN={ibm_token}"])
+            logger.info("Passing IBM_QUANTUM_TOKEN from environment to container")
+            # Create a sanitized command for logging that doesn't reveal the token
+            log_cmd = run_cmd.copy()
+            for i, item in enumerate(log_cmd):
+                if item.startswith("IBM_QUANTUM_TOKEN="):
+                    log_cmd[i] = "IBM_QUANTUM_TOKEN=********"
+        else:
+            logger.warning("IBM_QUANTUM_TOKEN not found in environment, quantum hardware access may be limited")
+            log_cmd = run_cmd.copy()
+        
+        run_cmd.extend([f"{image_name}:{image_tag}"])
+        log_cmd.extend([f"{image_name}:{image_tag}"])
+        
+        logger.info(f"Running Docker container: {' '.join(log_cmd)}")
+        print(f"Starting microservice container...")
+        
+        run_result = run_docker_command(run_cmd)
+        if not run_result.get("success", False):
+            logger.error(f"Failed to run Docker container: {run_result.get('stderr', '')}")
+            print(f"Error: Failed to run Docker container\n{run_result.get('stderr', '')}", file=sys.stderr)
+            sys.exit(1)
+        
+        container_id = run_result.get("stdout", "").strip()
+        if hasattr(args, 'detach') and args.detach and container_id:
+            print(f"Microservice started in detached mode with container ID: {container_id}")
+        
+        print(f"Microservice running at http://localhost:{port}")
     
     elif args.service_cmd == "test-generate":
         from .commands import generate_microservice_tests

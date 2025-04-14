@@ -1,8 +1,0 @@
-{
-  "success": false,
-  "exit_code": 2,
-  "stdout": "============================= test session starts ==============================\nplatform darwin -- Python 3.10.0, pytest-8.3.5, pluggy-1.5.0\nrootdir: /Users/atamrak1/dev/rnd/quantum/quantum-cli-sdk\nconfigfile: pyproject.toml\nplugins: anyio-4.9.0\ncollected 0 items / 1 error\n\n==================================== ERRORS ====================================\n____ ERROR collecting my-quantum-project/tests/generated/test_my_circuit.py ____\nImportError while importing test module '/Users/atamrak1/dev/rnd/quantum/quantum-cli-sdk/my-quantum-project/tests/generated/test_my_circuit.py'.\nHint: make sure your test modules/packages have valid Python names.\nTraceback:\n../../../../../.pyenv/versions/3.10.0/lib/python3.10/importlib/__init__.py:126: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\ntests/generated/test_my_circuit.py:2: in <module>\n    from qiskit import QuantumCircuit, assemble, Aer, transpile, execute\nE   ImportError: cannot import name 'Aer' from 'qiskit' (/Users/atamrak1/dev/rnd/quantum-cli-sdk/test_env/lib/python3.10/site-packages/qiskit/__init__.py)\n=========================== short test summary info ============================\nERROR tests/generated/test_my_circuit.py\n!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!\n=============================== 1 error in 0.46s ===============================\n",
-  "stderr": null,
-  "timestamp": "2025-04-09T18:54:02Z",
-  "test_path": "tests/generated"
-}
