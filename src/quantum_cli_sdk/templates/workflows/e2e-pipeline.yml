@@ -1173,7 +1173,6 @@ jobs:
 
           if [ -f "ir/openqasm/mitigated/$BASE_NAME.qasm" ]; then
             # Generate microservice source code
-            python -c "from setuptools import setup; setup(include_package_data=True)" || true
             quantum-cli service generate \
               ir/openqasm/mitigated/$BASE_NAME.qasm \
               --output-dir "$SERVICE_DIR"
