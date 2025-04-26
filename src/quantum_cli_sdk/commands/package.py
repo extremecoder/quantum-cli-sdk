@@ -16,7 +16,7 @@ from pathlib import Path
 from datetime import datetime
 
 from ..config import get_config
-from ..utils import find_files, create_archive
+from ..utils import find_files, create_archive, setup_logger
 from ..output_formatter import format_output
 from ..dependency_analyzer import analyze_dependencies
 
@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 
 # Default package config
 DEFAULT_PACKAGE_CONFIG = {
-    "name": "quantum-app",
+    "app_name": "quantum-app",
     "version": "0.1.0",
-    "description": "Quantum application package",
+    "app_description": "Quantum application package",
     "author": "",
     "license": "MIT",
     "format": "zip",
@@ -70,7 +70,7 @@ def find_config_file(directory):
         str: Path to config file, or None if not found
     """
     # Check for package configuration files in various formats
-    config_names = ["quantum.yaml", "quantum.yml", "quantum.json", "package.yaml", "package.yml", "package.json"]
+    config_names = ["quantum_manifest.json","quantum.yaml", "quantum.yml", "quantum.json", "package.yaml", "package.yml", "package.json"]
     
     for config_name in config_names:
         config_path = os.path.join(directory, config_name)
@@ -260,11 +260,11 @@ def create_wheel_package(source_dir, output_path, files, config):
         logger.info(f"Creating wheel package in: {output_path}")
         
         # Create temporary package directory
-        package_dir = os.path.join(tempfile.gettempdir(), config["name"].replace('-', '_'))
+        package_dir = os.path.join(tempfile.gettempdir(), config["app_name"].replace('-', '_'))
         os.makedirs(package_dir, exist_ok=True)
         
         # Create package structure
-        src_dir = os.path.join(package_dir, config["name"].replace('-', '_'))
+        src_dir = os.path.join(package_dir, config["app_name"].replace('-', '_'))
         os.makedirs(src_dir, exist_ok=True)
         
         # Copy files
@@ -279,10 +279,10 @@ def create_wheel_package(source_dir, output_path, files, config):
         # Create __init__.py
         init_path = os.path.join(src_dir, "__init__.py")
         with open(init_path, 'w') as f:
-            f.write(f"""# {config['name']} package
+            f.write(f"""# {config['app_name']} package
 __version__ = "{config['version']}"
 __author__ = "{config['author']}"
-__description__ = "{config['description']}"
+__description__ = "{config['app_description']}"
 """)
         
         # Create manifest
@@ -297,10 +297,10 @@ __description__ = "{config['description']}"
             f.write(f"""from setuptools import setup, find_packages
 
 setup(
-    name="{config['name']}",
+    name="{config['app_name']}",
     version="{config['version']}",
     author="{config['author']}",
-    description="{config['description']}",
+    description="{config['app_description']}",
     packages=find_packages(),
     include_package_data=True,
     install_requires={repr(config['requirements'])},
@@ -361,42 +361,145 @@ def create_manifest(config, files):
     Create package manifest.
     
     Args:
-        config (dict): Package configuration
+        config (dict): Package configuration (parsed from source manifest)
         files (list): List of included files
         
     Returns:
         dict: Manifest data
     """
-    manifest = {
-        "name": config["name"],
-        "version": config["version"],
-        "description": config["description"],
-        "author": config["author"],
-        "license": config["license"],
-        "entrypoint": config["entrypoint"],
-        "files": files,
-        "metadata": config.get("metadata", {}),
-        "created_at": datetime.now().isoformat(),
-        "quantum_sdk_version": config.get("metadata", {}).get("quantum_sdk_version", "0.1.0")
-    }
-    
+    import copy
+    manifest = copy.deepcopy(config)
+    # Remove unwanted fields
+    for field in [
+        "entrypoint", "requirements", "metadata", "include", "exclude", 
+        "files", "quantum_sdk_version"
+    ]:
+        manifest.pop(field, None)
     return manifest
 
-def package(source_dir, output_path=None, format=None, config_file=None):
+def extract_package_info(package_path):
+    """
+    Extract information from a package.
+    
+    Args:
+        package_path (str): Path to the package file
+        
+    Returns:
+        dict: Package information, or None if extraction failed
+    """
+    try:
+        ext = os.path.splitext(package_path)[1].lower()
+        
+        if ext == '.zip':
+            with zipfile.ZipFile(package_path, 'r') as zipf:
+                if 'quantum_manifest.json' in zipf.namelist():
+                    manifest_data = zipf.read('quantum_manifest.json')
+                    return json.loads(manifest_data)
+                    
+        elif ext == '.gz' or ext == '.tar.gz':
+            with tarfile.open(package_path, 'r:gz') as tar:
+                if 'quantum_manifest.json' in tar.getnames():
+                    manifest_file = tar.extractfile('quantum_manifest.json')
+                    return json.loads(manifest_file.read())
+                    
+        elif ext == '.whl':
+            with zipfile.ZipFile(package_path, 'r') as zipf:
+                for name in zipf.namelist():
+                    if name.endswith('quantum_manifest.json'):
+                        manifest_data = zipf.read(name)
+                        return json.loads(manifest_data)
+                        
+        logger.error(f"Manifest not found in package: {package_path}")
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error extracting package info: {e}")
+        return None
+
+def extract_package(package_path, output_dir, overwrite=False):
+    """
+    Extract a package to a directory.
+    
+    Args:
+        package_path (str): Path to the package file
+        output_dir (str): Directory to extract to
+        overwrite (bool): Whether to overwrite existing files
+        
+    Returns:
+        bool: True if extraction was successful
+    """
+    try:
+        # Ensure output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+        
+        ext = os.path.splitext(package_path)[1].lower()
+        
+        if ext == '.zip':
+            with zipfile.ZipFile(package_path, 'r') as zipf:
+                # Check for existing files if not overwriting
+                if not overwrite:
+                    for name in zipf.namelist():
+                        dest_path = os.path.join(output_dir, name)
+                        if os.path.exists(dest_path):
+                            logger.error(f"File already exists: {dest_path}")
+                            return False
+                
+                # Extract all files
+                zipf.extractall(output_dir)
+                
+        elif ext == '.gz' or ext == '.tar.gz':
+            with tarfile.open(package_path, 'r:gz') as tar:
+                # Check for existing files if not overwriting
+                if not overwrite:
+                    for name in tar.getnames():
+                        dest_path = os.path.join(output_dir, name)
+                        if os.path.exists(dest_path):
+                            logger.error(f"File already exists: {dest_path}")
+                            return False
+                
+                # Extract all files
+                tar.extractall(output_dir)
+                
+        elif ext == '.whl':
+            with zipfile.ZipFile(package_path, 'r') as zipf:
+                # Check for existing files if not overwriting
+                if not overwrite:
+                    for name in zipf.namelist():
+                        dest_path = os.path.join(output_dir, name)
+                        if os.path.exists(dest_path):
+                            logger.error(f"File already exists: {dest_path}")
+                            return False
+                
+                # Extract all files
+                zipf.extractall(output_dir)
+                
+        else:
+            logger.error(f"Unsupported package format: {ext}")
+            return False
+            
+        logger.info(f"Package extracted to: {output_dir}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error extracting package: {e}")
+        return False
+
+def package(source_dir, output_path=None, format=None, config_file=None, config_overrides=None):
     """
     Package a quantum application.
     
     Args:
         source_dir (str): Source directory
-        output_path (str, optional): Output path
+        output_path (str, optional): Output package path
         format (str, optional): Package format (zip, tar, wheel)
         config_file (str, optional): Path to config file
+        config_overrides (dict, optional): Config overrides
         
     Returns:
         str: Path to created package
     """
-    # Set up logger
-    setup_logger()
+    # Set up logger with DEBUG level since this is a development tool
+    setup_logger(level=logging.DEBUG)
     
     logger.info(f"Packaging quantum application from {source_dir}")
     
@@ -418,13 +521,17 @@ def package(source_dir, output_path=None, format=None, config_file=None):
         logger.warning("No configuration file found, using defaults")
         config = DEFAULT_PACKAGE_CONFIG.copy()
     
+    # Apply overrides if provided
+    if config_overrides:
+        config.update(config_overrides)
+    
     # Override format if specified
     if format:
         config["format"] = format
     
     # Determine output path
     if not output_path:
-        package_name = f"{config['name']}-{config['version']}"
+        package_name = f"{config['app_name']}-{config['version']}"
         
         if config["format"] == "zip":
             output_path = os.path.join(os.getcwd(), f"{package_name}.zip")

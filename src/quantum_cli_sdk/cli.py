@@ -321,14 +321,33 @@ def setup_service_commands(subparsers):
 def setup_package_commands(subparsers):
     """Setup commands for application packaging."""
     package_parser = subparsers.add_parser("package", help="Package quantum applications")
-    package_subparsers = package_parser.add_subparsers(dest="package_cmd", help="Package command")
+    package_subparsers = package_parser.add_subparsers(dest="package_cmd", help="Package command", required=True)
 
-    # package create (placeholder)
-    # create_parser = package_subparsers.add_parser("create", help="Create a distributable application package")
-    # create_parser.add_argument("--source-dir", required=True, help="Path to the microservice source directory")
-    # create_parser.add_argument("--circuit-file", required=True, help="Path to the final IR file (e.g., mitigated QASM)")
-    # create_parser.add_argument("--metadata-file", required=True, help="Path to metadata file (e.g., resource estimation JSON)")
-    # create_parser.add_argument("--output-path", required=True, help="Path to save the output package (e.g., .zip file)")
+    # package create
+    create_parser = package_subparsers.add_parser("create", help="Create a distributable application package")
+    create_parser.add_argument("--source-dir", required=True, help="Path to the source directory")
+    create_parser.add_argument("--output-path", help="Path to save the output package (e.g., .zip file)")
+    create_parser.add_argument("--format", choices=["zip", "tar", "wheel"], default="zip", help="Package format (default: zip)")
+    create_parser.add_argument("--config", help="Path to package configuration file")
+    create_parser.add_argument("--app-name", help="Application name (overrides config)")
+    create_parser.add_argument("--version", help="Package version (overrides config)")
+    create_parser.add_argument("--app-description", help="Application description (overrides config)")
+    create_parser.add_argument("--author", help="Package author (overrides config)")
+    create_parser.add_argument("--license", help="Package license (overrides config)")
+    create_parser.add_argument("--requirements", help="Comma-separated list of requirements (overrides config)")
+    create_parser.add_argument("--include", help="Comma-separated list of file patterns to include (overrides config)")
+    create_parser.add_argument("--exclude", help="Comma-separated list of file patterns to exclude (overrides config)")
+
+    # package info
+    info_parser = package_subparsers.add_parser("info", help="Show information about a package")
+    info_parser.add_argument("package_path", help="Path to the package file")
+    info_parser.add_argument("--format", choices=["text", "json", "yaml"], default="text", help="Output format")
+
+    # package extract
+    extract_parser = package_subparsers.add_parser("extract", help="Extract a package to a directory")
+    extract_parser.add_argument("package_path", help="Path to the package file")
+    extract_parser.add_argument("--output-dir", help="Directory to extract to (default: current directory)")
+    extract_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing files")
 
 def setup_hub_commands(subparsers):
     """Setup commands for Quantum Hub interaction."""
@@ -713,10 +732,7 @@ def main():
         # Restore the call to the service command handler
         handle_service_commands(args)
     elif args.command == "package":
-        # handle_package_commands(args) # Commented out
-        print(f"Command group '{args.command}' is not fully implemented yet.", file=sys.stderr)
-        parser.print_help(sys.stderr)
-        sys.exit(1)
+        handle_package_commands(args)
     elif args.command == "hub":
         # handle_hub_commands(args) # Commented out
         print(f"Command group '{args.command}' is not fully implemented yet.", file=sys.stderr)
@@ -1217,9 +1233,7 @@ def handle_service_commands(args):
         
         if hasattr(args, 'detach') and args.detach:
             run_cmd.append("-d")
-        else:
-            run_cmd.extend(["-it"])
-        
+
         # Add environment variables if specified
         if hasattr(args, 'env') and args.env:
             for env_var in args.env:
@@ -1380,6 +1394,98 @@ def handle_config_commands(args):
             sys.exit(1)
     else:
         print(f"Unknown config command: {args.config_cmd}", file=sys.stderr)
+        sys.exit(1)
+
+def handle_package_commands(args):
+    """Handle package subcommands."""
+    if args.package_cmd == "create":
+        from .commands import package as package_mod
+        
+        # Convert comma-separated strings to lists if provided
+        requirements = args.requirements.split(',') if args.requirements else None
+        include = args.include.split(',') if args.include else None
+        exclude = args.exclude.split(',') if args.exclude else None
+        
+        # Create config overrides
+        config_overrides = {}
+        if args.app_name: config_overrides['app_name'] = args.app_name
+        if args.version: config_overrides['version'] = args.version
+        if args.app_description: config_overrides['app_description'] = args.app_description
+        if args.author: config_overrides['author'] = args.author
+        if args.license: config_overrides['license'] = args.license
+        if requirements: config_overrides['requirements'] = requirements
+        if include: config_overrides['include'] = include
+        if exclude: config_overrides['exclude'] = exclude
+        
+        # Call the package function
+        result = package_mod.package(
+            source_dir=args.source_dir,
+            output_path=args.output_path,
+            format=args.format,
+            config_file=args.config,
+            config_overrides=config_overrides
+        )
+        
+        if result:
+            print(f"Package created: {result}")
+            sys.exit(0)
+        else:
+            print("Failed to create package", file=sys.stderr)
+            sys.exit(1)
+            
+    elif args.package_cmd == "info":
+        from .commands import package as package_mod
+        
+        # Extract package info
+        info = package_mod.extract_package_info(args.package_path)
+        if not info:
+            print("Failed to extract package information", file=sys.stderr)
+            sys.exit(1)
+            
+        # Format output
+        if args.format == "json":
+            print(json.dumps(info, indent=2))
+        elif args.format == "yaml":
+            import yaml
+            print(yaml.dump(info))
+        else:  # text format
+            print(f"Package: {info.get('name', 'Unknown')}")
+            print(f"Version: {info.get('version', 'Unknown')}")
+            print(f"Description: {info.get('description', 'None')}")
+            print(f"Author: {info.get('author', 'Unknown')}")
+            print(f"License: {info.get('license', 'Unknown')}")
+            print(f"Entrypoint: {info.get('entrypoint', 'None')}")
+            print("\nRequirements:")
+            for req in info.get('requirements', []):
+                print(f"  - {req}")
+            print("\nFiles:")
+            for file in info.get('files', []):
+                print(f"  - {file}")
+                
+        sys.exit(0)
+        
+    elif args.package_cmd == "extract":
+        from .commands import package as package_mod
+        
+        # Determine output directory
+        output_dir = args.output_dir if args.output_dir else os.getcwd()
+        
+        # Extract package
+        success = package_mod.extract_package(
+            package_path=args.package_path,
+            output_dir=output_dir,
+            overwrite=args.overwrite
+        )
+        
+        if success:
+            print(f"Package extracted to: {output_dir}")
+            sys.exit(0)
+        else:
+            print("Failed to extract package", file=sys.stderr)
+            sys.exit(1)
+            
+    else:
+        print(f"Error: Unknown package command '{args.package_cmd}'", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":
