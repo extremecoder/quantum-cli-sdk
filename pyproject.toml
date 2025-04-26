@@ -10,9 +10,9 @@ authors = [
     { name = "Abhishek Tamrakar", email = "trainings.abhishek@gmail.com" },
     { name = "Mohit Saxena", email = "m22aie240@iitj.ac.in" }
 ]
-license = "MIT"
 readme = "README.md"
 keywords = ["quantum", "cli", "sdk", "development"]
+license-files = []  # Prevent default inclusion of license-file metadata
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
