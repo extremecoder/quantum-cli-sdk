@@ -525,36 +525,31 @@ This structure is designed to work seamlessly with the Quantum CLI SDK commands 
     quantum-cli service generate --input-file ir/openqasm/mitigated/my_circuit.qasm --output-dir services/generated/microservice
     ```
 
-20. **Generate Tests for Microservice:**
+20. **Run Microservice Tests:**
     ```bash
-    quantum-cli service test-generate --service-dir services/generated/microservice
+    quantum-cli service test run microservice
     ```
 
-21. **Run Microservice Tests:**
+21. **Package the Application:**
     ```bash
-    quantum-cli service test run services/generated/microservice/tests/ --output results/tests/service/test_summary.json
+    quantum-cli package create --source-dir microservice --format zip --config quantum_manifest.json --output-path dist/quantum-app-2.0.0.zip --app-name quantum-app --version 2.0.0 --app-description "Quantum application for my_circuit"
     ```
 
-22. **Build Microservice Image:**
-    ```bash
-    quantum-cli service build services/generated/microservice --tag my-quantum-service:latest
-    ```
-
-23. **Package the Application:**
-    ```bash
-    quantum-cli package create . --output dist/my-quantum-app-v1.0.zip
-    ```
-
-24. **Upload to Hub:**
+22. **Upload to Hub:**
     ```bash
     # Assume this outputs an ID like 'upload-xyz-789'
     quantum-cli hub upload dist/my-quantum-app-v1.0.zip
     ```
 
-25. **Publish to Hub Registry:**
+23. **Publish to Hub Registry:**
     ```bash
     quantum-cli hub publish upload-xyz-789 --target registry
     ```
+
+24. **Publish to Hub Marketplace:**
+    ```bash
+    quantum-cli hub publish upload-xyz-789 --target marketplace
+    ```    
 
 ## Test Suite
 
