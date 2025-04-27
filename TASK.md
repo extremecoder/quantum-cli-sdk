@@ -58,7 +58,7 @@ Generate tests using llm such a way that it tests the generated ir code from eve
 ### Release and Maintenance
 41. [ ] 2024-09-15: Complete beta testing
 42. [ ] 2024-09-25: Fix issues identified in beta
-43. [ ] 2024-10-05: Prepare PyPI package release
+43. [x] 2024-10-05: Prepare PyPI package release
 44. [ ] 2024-10-15: Create release documentation
 45. [ ] 2024-10-25: Publish version 1.0.0
 46. [ ] 2024-11-05: Set up maintenance schedule

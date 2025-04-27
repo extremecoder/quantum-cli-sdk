@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quantum-cli-sdk"
-version = "0.3.6"
+version = "0.3.7"
 description = "A CLI and SDK for quantum development"
 authors = [
     { name = "Abhishek Tamrakar & Mohit Saxena", email = "trainings.abhishek@gmail.com" },
