@@ -7,7 +7,7 @@ name = "quantum-cli-sdk"
 version = "0.3.6"
 description = "A CLI and SDK for quantum development"
 authors = [
-    { name = "Abhishek Tamrakar", email = "trainings.abhishek@gmail.com" },
+    { name = "Abhishek Tamrakar & Mohit Saxena", email = "trainings.abhishek@gmail.com" },
     { name = "Mohit Saxena", email = "m22aie240@iitj.ac.in" }
 ]
 readme = "README.md"
